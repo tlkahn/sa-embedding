@@ -379,6 +379,16 @@ def load_model(config: ModelConfig):
         # Use SentenceTransformer directly
         model = SentenceTransformer(config.model_id, device=DEVICE)
     load_time = time.time() - start
+
+    # Verify model is on GPU if CUDA is available
+    if DEVICE == "cuda":
+        if config.needs_pooling:
+            # For wrapper classes, check the underlying model
+            assert next(model.model.parameters()).is_cuda, f"Model {config.name} not on GPU!"
+        else:
+            # For SentenceTransformer, check the underlying transformer
+            assert next(model._first_module().parameters()).is_cuda, f"Model {config.name} not on GPU!"
+
     return model, load_time
 
 
@@ -463,6 +473,7 @@ def run_benchmark(
     model, load_time = load_model(config)
     print(f"  Load time: {load_time:.2f}s")
     print(f"  Embedding dimension: {model.get_sentence_embedding_dimension()}")
+    log_gpu_memory("after model load")
 
     # Encoding speed
     print("Measuring encoding speed...")
@@ -869,6 +880,7 @@ def main():
             print(f"\nLoading ByT5-Sanskrit preprocessor: {args.byt5_model}")
             byt5_preprocessor = ByT5SanskritPreprocessor(model_id=args.byt5_model)
             print("ByT5-Sanskrit loaded successfully.")
+            log_gpu_memory("after ByT5 load")
         else:
             print("\nWarning: ByT5-Sanskrit requested but transformers not available.")
             print("Install with: pip install transformers")
@@ -882,7 +894,10 @@ def main():
             print(f"\nError benchmarking {config.name}: {e}")
             import traceback
             traceback.print_exc()
-            continue
+        finally:
+            # Clear GPU memory between model benchmarks to prevent OOM
+            clear_gpu_memory()
+            log_gpu_memory("after cleanup")
 
     if results:
         print_comparison_table(results)
