@@ -89,6 +89,21 @@ DISSIMILARITY_PAIRS = [
     ("machine learning algorithm", "prāṇāpānau samau kṛtvā"),
 ]
 
+# Devanagari similarity pairs (same concepts as IAST, transliterated)
+SIMILARITY_PAIRS_DEVANAGARI = [
+    # Same concept, different phrasing (English + Devanagari)
+    ("prāṇāyāma breath control", "ऊर्ध्वे प्राणो ह्यधो जीवो"),
+    ("meditation on emptiness", "निराधारं मनः कृत्वा विकल्पान् न विकल्पयेत्"),
+    ("pure consciousness bliss", "चिदानन्दघनात्मानं सर्वस्थानेषु भावयेत्"),
+]
+
+# Devanagari dissimilar pairs
+DISSIMILARITY_PAIRS_DEVANAGARI = [
+    ("breath practice prāṇa", "आकाशं विमलं पश्येत्"),
+    ("cooking recipe", "चिदानन्दघनात्मानं सर्वस्थानेषु भावयेत्"),
+    ("machine learning algorithm", "प्राणापानौ समौ कृत्वा"),
+]
+
 
 # =============================================================================
 # Benchmark Classes
@@ -125,6 +140,9 @@ class BenchmarkResult:
     retrieval_recall_at_1_devanagari: float = 0.0
     retrieval_recall_at_3_devanagari: float = 0.0
     transliteration_consistency: float = 0.0  # IAST embedding vs transliterated Devanagari embedding
+    # Devanagari similarity discrimination
+    similarity_scores_devanagari: dict = None
+    dissimilarity_scores_devanagari: dict = None
 
 
 # =============================================================================
@@ -304,6 +322,21 @@ def run_benchmark(config: ModelConfig) -> BenchmarkResult:
     transliteration_consistency = float(np.mean(consistency_scores))
     print(f"  Avg IAST<->Transliterated Devanagari similarity: {transliteration_consistency:.3f}")
 
+    # Devanagari similarity discrimination
+    print("Computing Devanagari similarity scores...")
+    similarity_scores_deva = {}
+    for text1, text2 in SIMILARITY_PAIRS_DEVANAGARI:
+        score = compute_similarity(model, text1, text2, config.prefix)
+        similarity_scores_deva[(text1[:30], text2[:30])] = score
+        print(f"  {text1[:25]}... <-> {text2[:15]}...: {score:.3f}")
+
+    print("Computing Devanagari dissimilarity scores...")
+    dissimilarity_scores_deva = {}
+    for text1, text2 in DISSIMILARITY_PAIRS_DEVANAGARI:
+        score = compute_similarity(model, text1, text2, config.prefix)
+        dissimilarity_scores_deva[(text1[:30], text2[:30])] = score
+        print(f"  {text1[:25]}... <-> {text2[:15]}...: {score:.3f}")
+
     return BenchmarkResult(
         model_name=config.name,
         embedding_dim=model.get_sentence_embedding_dimension(),
@@ -319,6 +352,8 @@ def run_benchmark(config: ModelConfig) -> BenchmarkResult:
         retrieval_recall_at_1_devanagari=r1_deva,
         retrieval_recall_at_3_devanagari=r3_deva,
         transliteration_consistency=transliteration_consistency,
+        similarity_scores_devanagari=similarity_scores_deva,
+        dissimilarity_scores_devanagari=dissimilarity_scores_deva,
     )
 
 
@@ -414,9 +449,9 @@ def print_comparison_table(results: list[BenchmarkResult]):
         print(f"{delta:<+18.3f} ", end="")
     print()
 
-    # Similarity discrimination
+    # Similarity discrimination (IAST)
     print("\n" + "-" * 80)
-    print("Similarity Discrimination (higher = better separation)")
+    print("Similarity Discrimination - IAST (higher = better separation)")
 
     for r in results:
         sim_avg = np.mean(list(r.similarity_scores.values()))
@@ -424,6 +459,18 @@ def print_comparison_table(results: list[BenchmarkResult]):
         discrimination = sim_avg - dissim_avg
         print(f"  {r.model_name}: sim_avg={sim_avg:.3f}, dissim_avg={dissim_avg:.3f}, "
               f"discrimination={discrimination:.3f}")
+
+    # Similarity discrimination (Devanagari)
+    print("\n" + "-" * 80)
+    print("Similarity Discrimination - DEVANAGARI (higher = better separation)")
+
+    for r in results:
+        if r.similarity_scores_devanagari and r.dissimilarity_scores_devanagari:
+            sim_avg = np.mean(list(r.similarity_scores_devanagari.values()))
+            dissim_avg = np.mean(list(r.dissimilarity_scores_devanagari.values()))
+            discrimination = sim_avg - dissim_avg
+            print(f"  {r.model_name}: sim_avg={sim_avg:.3f}, dissim_avg={dissim_avg:.3f}, "
+                  f"discrimination={discrimination:.3f}")
 
 
 def main():
