@@ -150,18 +150,23 @@ We selected three models representing distinct approaches to multilingual embedd
 
 4. **Practical considerations**: All run efficiently on consumer hardware (768–1024 dim), have active maintenance, and represent production-viable options.
 
-**Models considered but not included**:
+**Models evaluated (added based on recommendations)**:
 
-| Model | Reason for Exclusion | Consider Adding? |
-|-------|---------------------|------------------|
-| **MuRIL** | Requires manual pooling (not sentence-native). Academic standard but adds implementation complexity. | **Yes** — for academic rigor |
-| **OpenAI text-embedding-3** | Commercial API, not open weights. Cost prohibitive for large corpus indexing. | No — different use case |
-| **LASER3** | Meta's model; 200 languages but less community adoption. Encoder-decoder architecture differs from standard sentence transformers. | Maybe — worth testing |
-| **BGE-M3** | Recent strong multilingual (BAAI). Multi-vector retrieval may not map to pgvector cosine. | **Yes** — recent SOTA competitor |
-| **Jina v3** | Commercial model with free tier. Claimed strong Indic performance but limited peer validation. | Maybe — if Indic claims verified |
-| **IndicSBERT** | Community fine-tune; limited documentation and uncertain maintenance. | No — prefer upstream models |
+| Model | Status | Finding |
+|-------|--------|---------|
+| **MuRIL** | ✅ Added | **Unsuitable for retrieval** — negative discrimination (-0.005), clusters all text at ~0.99 similarity |
+| **BGE-M3** | ✅ Added | Excellent recall (1.0 Recall@3), mediocre MRR (0.643). Good for recall-focused applications |
 
-**Recommendation for expanded benchmark**: Add **MuRIL** (with mean pooling) for academic comparison and **BGE-M3** for competitive analysis against recent SOTA. Both are open-source and would provide valuable reference points.
+**Models not included**:
+
+| Model | Reason for Exclusion |
+|-------|---------------------|
+| **OpenAI text-embedding-3** | Commercial API, not open weights. Cost prohibitive for large corpus indexing. |
+| **LASER3** | Meta's model; 200 languages but different architecture (encoder-decoder). |
+| **Jina v3** | Commercial model with free tier. Limited peer validation for Indic claims. |
+| **IndicSBERT** | Community fine-tune; limited documentation and uncertain maintenance. |
+
+**Key finding from expanded benchmark**: MuRIL, despite being the academically-cited standard for Indic NLP, is **unsuitable for Sanskrit semantic search**. Its mean-pooled embeddings cluster all text at ~0.99 similarity regardless of semantic content. LaBSE should be used instead for citable, peer-reviewed results.
 
 ### 5.2 Benchmark Methodology
 
@@ -169,6 +174,8 @@ We selected three models representing distinct approaches to multilingual embedd
 - **Vyakyarth** (`krutrim-ai-labs/Vyakyarth`) — Indic-optimized, 768-dim
 - **LaBSE** (`sentence-transformers/LaBSE`) — Cross-lingual, 768-dim
 - **E5-multilingual** (`intfloat/multilingual-e5-large`) — General multilingual, 1024-dim
+- **MuRIL** (`google/muril-base-cased`) — Academic standard with mean pooling, 768-dim
+- **BGE-M3** (`BAAI/bge-m3`) — Recent SOTA multilingual, 1024-dim
 
 **Test corpus**: 13 Sanskrit sentences from Vijñānabhairava and related tantric texts, covering four semantic categories:
 - Breath/prāṇa practices (4 sentences)
@@ -186,28 +193,33 @@ We selected three models representing distinct approaches to multilingual embedd
 
 #### IAST Corpus
 
-| Metric | Vyakyarth | LaBSE | E5-multilingual |
-|--------|-----------|-------|-----------------|
-| MRR | 0.509 | **0.759** | 0.714 |
-| Recall@1 | 0.286 | **0.714** | 0.571 |
-| Recall@3 | 0.571 | 0.714 | **0.857** |
+| Metric | Vyakyarth | LaBSE | E5-multilingual | MuRIL | BGE-M3 |
+|--------|-----------|-------|-----------------|-------|--------|
+| MRR | 0.509 | **0.759** | 0.714 | 0.605 | 0.643 |
+| Recall@1 | 0.286 | **0.714** | 0.571 | 0.429 | 0.429 |
+| Recall@3 | 0.571 | 0.714 | 0.857 | 0.714 | **1.000** |
 
 #### Devanagari Corpus (via aksharamukha transliteration)
 
-| Metric | Vyakyarth | LaBSE | E5-multilingual |
-|--------|-----------|-------|-----------------|
-| MRR | 0.929 | 0.929 | **1.000** |
-| Recall@1 | 0.857 | 0.857 | **1.000** |
-| Recall@3 | **1.000** | **1.000** | **1.000** |
+| Metric | Vyakyarth | LaBSE | E5-multilingual | MuRIL | BGE-M3 |
+|--------|-----------|-------|-----------------|-------|--------|
+| MRR | 0.929 | 0.929 | **1.000** | 0.726 | 0.857 |
+| Recall@1 | 0.857 | 0.857 | **1.000** | 0.571 | 0.714 |
+| Recall@3 | **1.000** | **1.000** | **1.000** | 0.857 | **1.000** |
 
 #### Script Impact (Devanagari − IAST)
 
-| Metric | Vyakyarth | LaBSE | E5-multilingual |
-|--------|-----------|-------|-----------------|
-| ΔMRR | **+0.420** | +0.170 | +0.286 |
-| ΔRecall@1 | **+0.571** | +0.143 | +0.429 |
+| Metric | Vyakyarth | LaBSE | E5-multilingual | MuRIL | BGE-M3 |
+|--------|-----------|-------|-----------------|-------|--------|
+| ΔMRR | **+0.420** | +0.170 | +0.286 | +0.121 | +0.214 |
+| ΔRecall@1 | **+0.571** | +0.143 | +0.429 | +0.143 | +0.286 |
 
-**Key finding**: All models perform dramatically better on Devanagari than IAST. Vyakyarth shows the largest improvement (+0.420 MRR), suggesting it was primarily trained on native Indic scripts. E5-multilingual achieves perfect retrieval (1.0 MRR) on Devanagari despite having no explicit Sanskrit training.
+**Key findings**:
+1. **LaBSE achieves best IAST MRR** (0.759), confirming its effectiveness for Sanskrit retrieval
+2. **E5-multilingual achieves perfect Devanagari retrieval** (1.0 MRR) despite no explicit Sanskrit training
+3. **MuRIL underperforms** despite being the academic standard — its mean-pooled embeddings lack retrieval optimization
+4. **BGE-M3 excels at recall** (1.0 Recall@3 on IAST) but has mediocre precision (0.643 MRR)
+5. **All models improve with Devanagari**, with Vyakyarth showing the largest gain (+0.420 MRR)
 
 ### 5.4 Similarity Discrimination
 
@@ -217,24 +229,32 @@ Discrimination measures a model's ability to assign high similarity to semantica
 
 | Model | Similar Avg | Dissimilar Avg | Discrimination |
 |-------|-------------|----------------|----------------|
-| Vyakyarth | 0.328 | 0.244 | 0.084 |
 | LaBSE | 0.378 | 0.258 | **0.120** |
+| BGE-M3 | 0.499 | 0.398 | 0.101 |
+| Vyakyarth | 0.328 | 0.244 | 0.084 |
 | E5-multilingual | 0.830 | 0.784 | 0.046 |
+| MuRIL | 0.987 | 0.992 | **-0.005** |
 
 #### Devanagari Pairs
 
 | Model | Similar Avg | Dissimilar Avg | Discrimination |
 |-------|-------------|----------------|----------------|
-| Vyakyarth | 0.441 | 0.245 | 0.196 |
 | LaBSE | 0.330 | 0.094 | **0.236** |
+| Vyakyarth | 0.441 | 0.245 | 0.196 |
+| BGE-M3 | 0.417 | 0.367 | 0.050 |
 | E5-multilingual | 0.774 | 0.756 | 0.017 |
+| MuRIL | 0.988 | 0.987 | 0.001 |
 
 **Key findings**:
 
 1. **LaBSE has strongest discrimination** in both scripts, with Devanagari nearly doubling IAST performance (0.236 vs 0.120)
-2. **Vyakyarth improves 2.3× with Devanagari** (0.196 vs 0.084), confirming native script preference
-3. **E5-multilingual clusters too tightly** — dissimilar pairs score 0.756–0.784, leaving little room to distinguish semantically related content. This explains its high retrieval scores but poor discrimination: everything is "similar"
-4. **LaBSE's dissimilar scores drop to 0.094 in Devanagari** — it correctly identifies unrelated content as genuinely different
+2. **MuRIL has catastrophic discrimination failure** — negative discrimination (-0.005) means it assigns *higher* similarity to unrelated pairs than related pairs. With sim_avg=0.987 and dissim_avg=0.992, everything clusters at near-1.0 similarity, making semantic search impossible.
+3. **BGE-M3 is second-best on IAST** (0.101) but degrades on Devanagari (0.050)
+4. **Vyakyarth improves 2.3× with Devanagari** (0.196 vs 0.084), confirming native script preference
+5. **E5-multilingual clusters too tightly** — dissimilar pairs score 0.756–0.784, but still better than MuRIL
+6. **LaBSE's dissimilar scores drop to 0.094 in Devanagari** — it correctly identifies unrelated content as genuinely different
+
+**Critical warning about MuRIL**: Despite being the academically-cited standard for Indic NLP, MuRIL with mean pooling is **unsuitable for Sanskrit semantic search**. Its embeddings cluster all text at ~0.99 similarity regardless of semantic content. This is likely because MuRIL was trained for classification tasks (MLM, NSP), not sentence similarity. Use LaBSE instead.
 
 ### 5.5 Transliteration Consistency
 
@@ -242,33 +262,56 @@ This measures whether a model produces similar embeddings for the same text in d
 
 | Model | Consistency Score | Interpretation |
 |-------|-------------------|----------------|
-| E5-multilingual | **0.901** | Near-identical embeddings across scripts |
+| MuRIL | **0.987** | Near-identical (but meaningless — see below) |
+| E5-multilingual | 0.901 | Near-identical embeddings across scripts |
+| BGE-M3 | 0.573 | Moderate script sensitivity |
 | LaBSE | 0.457 | Moderate script sensitivity |
 | Vyakyarth | 0.343 | High script sensitivity |
 
 **Implications**:
 
-- **E5-multilingual** treats IAST and Devanagari as essentially the same text — useful if you need script-agnostic search, but may miss script-specific nuances
+- **MuRIL's high consistency (0.987) is misleading** — it reflects the model's tendency to cluster everything at ~0.99 similarity, not genuine script understanding
+- **E5-multilingual** treats IAST and Devanagari as essentially the same text — useful for script-agnostic search
+- **BGE-M3** shows moderate script awareness, similar to LaBSE
 - **Vyakyarth's low consistency** (0.343) explains its dramatic Devanagari improvement: it learned different representations for each script
 - **LaBSE** balances script awareness with cross-script retrieval capability
 
 ### 5.6 Performance Characteristics
 
-| Model | Load Time | Encode Time | Embedding Dim |
-|-------|-----------|-------------|---------------|
-| Vyakyarth | 2.21s | 5.19ms/text | 768 |
-| LaBSE | 2.45s | **4.81ms/text** | 768 |
-| E5-multilingual | 2.80s | 18.38ms/text | 1024 |
+| Model | Load Time | Encode Time (GPU) | Embedding Dim |
+|-------|-----------|-------------------|---------------|
+| LaBSE | 2.15s | 2.65ms/text | 768 |
+| E5-multilingual | 2.71s | 2.02ms/text | 1024 |
+| BGE-M3 | 4.64s | 1.97ms/text | 1024 |
+| MuRIL | 3.11s | **0.70ms/text** | 768 |
+| Vyakyarth | 2.39s | 29.77ms/text | 768 |
 
-LaBSE offers the best speed/quality tradeoff. E5-multilingual's larger dimension (1024 vs 768) contributes to 3.8× slower encoding.
+*Benchmarked on NVIDIA A10 GPU*
+
+**Notes**:
+- **MuRIL is fastest** (0.70ms/text) but its poor discrimination makes speed irrelevant
+- **BGE-M3 loads slowly** (4.64s) due to its large architecture
+- **Vyakyarth is slowest** at encoding (29.77ms/text) — unclear why given similar architecture
+- **LaBSE offers the best speed/quality tradeoff** — fast encoding (2.65ms) with best retrieval quality
 
 ### 5.7 Benchmark Conclusions
 
-1. **Always transliterate IAST to Devanagari** before embedding — all models improve substantially
-2. **Use LaBSE for semantic discrimination** — best at separating related from unrelated content
-3. **Use E5-multilingual for retrieval recall** — achieves perfect Recall@3 but may over-retrieve
-4. **Avoid E5-multilingual for fine-grained similarity** — its tight clustering (0.017 discrimination) makes threshold-based filtering unreliable
-5. **Vyakyarth underperforms on IAST** — despite Indic optimization claims, it struggles with romanized Sanskrit
+1. **Always transliterate IAST to Devanagari** before embedding — all models improve substantially (17–42% MRR gain)
+2. **Use LaBSE for best overall performance** — highest IAST MRR (0.759), best discrimination (0.236 on Devanagari)
+3. **Avoid MuRIL for semantic search** — despite academic citations, its mean-pooled embeddings have negative discrimination (-0.005), making it useless for retrieval
+4. **Use BGE-M3 for maximum recall** — achieves perfect Recall@3 on IAST (1.0) but mediocre precision
+5. **E5-multilingual achieves perfect Devanagari retrieval** — but poor discrimination (0.017) makes thresholding unreliable
+6. **Vyakyarth underperforms on IAST** — despite Indic optimization claims, it struggles with romanized Sanskrit
+
+**Model rankings by use case**:
+
+| Use Case | Best | Second | Avoid |
+|----------|------|--------|-------|
+| Overall retrieval | LaBSE | E5-multilingual | MuRIL |
+| Semantic discrimination | LaBSE | Vyakyarth | MuRIL |
+| Maximum recall | BGE-M3 | E5-multilingual | Vyakyarth |
+| IAST-only corpus | LaBSE | E5-multilingual | MuRIL |
+| Script-agnostic | E5-multilingual | BGE-M3 | Vyakyarth |
 
 ### 5.8 ByT5-Sanskrit Preprocessing Evaluation
 
@@ -367,24 +410,25 @@ embedding = embed_sanskrit("ūrdhve prāṇo hy adho jīvo", model, source_scrip
 
 ## 6. Comparative Summary
 
-Based on both literature review and empirical benchmarking:
+Based on both literature review and empirical benchmarking on 5 models:
 
 | Use Case | Recommended Model | Script | Rationale |
 |----------|-------------------|--------|-----------|
-| **Best overall retrieval** | LaBSE | Devanagari | Best MRR + discrimination balance |
-| **Maximum recall** | E5-multilingual | Devanagari | Perfect Recall@3, but poor discrimination |
-| **Semantic discrimination** | LaBSE | Devanagari | 0.236 discrimination score (highest) |
-| **Academic publication** | MuRIL + mean pooling | Devanagari | Peer-reviewed; citable |
+| **Best overall retrieval** | LaBSE | Devanagari | Best MRR (0.759 IAST, 0.929 Devanagari) + discrimination |
+| **Maximum recall** | BGE-M3 | Either | Perfect Recall@3 on IAST (1.0), good Devanagari |
+| **Semantic discrimination** | LaBSE | Devanagari | 0.236 discrimination score (highest of 5 models) |
+| **Academic publication** | LaBSE | Devanagari | Peer-reviewed (ACL 2022); MuRIL fails for retrieval |
 | **Cross-lingual (Sanskrit ↔ English)** | LaBSE | Either | Designed for cross-lingual retrieval |
-| **Script-agnostic search** | E5-multilingual | Either | 0.901 transliteration consistency |
-| **IAST-only corpus** | LaBSE | IAST | 0.759 MRR on IAST (best of tested) |
+| **Script-agnostic search** | E5-multilingual | Either | 0.901 transliteration consistency, perfect Devanagari MRR |
+| **IAST-only corpus** | LaBSE | IAST | 0.759 MRR on IAST (best of 5 models) |
 | **Linguistic analysis** | ByT5-Sanskrit | Either | SOTA segmentation/lemmatization/parsing |
 | **Domain-specific similarity** | Custom fastText | — | Trainable on small corpora |
-| **Speed-critical** | LaBSE | — | 4.81ms/text (fastest) |
+| **Speed-critical (GPU)** | E5-multilingual | — | 2.02ms/text with good quality |
 
 **Critical recommendations**:
-1. **Transliterate IAST → Devanagari** before embedding. All models improve 17–42% on MRR with Devanagari input.
-2. **Do NOT preprocess with ByT5-Sanskrit for retrieval** — segmentation/lemmatization hurts MRR by up to 42% (see Section 5.8). Use ByT5-Sanskrit only for linguistic analysis tasks.
+1. **Transliterate IAST → Devanagari** before embedding. All models improve 12–42% on MRR with Devanagari input.
+2. **Do NOT use MuRIL for semantic search** — despite academic citations, it has negative discrimination (-0.005) and clusters all text at ~0.99 similarity.
+3. **Do NOT preprocess with ByT5-Sanskrit for retrieval** — segmentation/lemmatization hurts MRR by up to 42% (see Section 5.8). Use ByT5-Sanskrit only for linguistic analysis tasks.
 
 ---
 
@@ -492,10 +536,11 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 3. Rely on downstream reranking to filter false positives
 
 ### For academic rigor:
-1. Use MuRIL with explicit methodology citation
+1. **Use LaBSE** (peer-reviewed ACL 2022) — NOT MuRIL, which has catastrophic discrimination failure for retrieval tasks
 2. Report preprocessing steps (script normalization only — not segmentation/lemmatization for retrieval)
 3. Create and release evaluation dataset for reproducibility
 4. Report results on both IAST and Devanagari to enable comparison
+5. If citing MuRIL for Indic NLP, note its unsuitability for sentence similarity tasks
 
 ### For best quality (with effort):
 1. Normalize all text to Devanagari via aksharamukha
@@ -654,12 +699,13 @@ print(f"Lemmatized: {lemmatize_sanskrit(text)}")
 | Model | HuggingFace ID | Sentence-Native | Notes |
 |-------|----------------|-----------------|-------|
 | ByT5-Sanskrit | `chronbmm/sanskrit5-multitask` | ❌ (task model) | Linguistic analysis only; hurts retrieval |
-| Vyakyarth | `krutrim-ai-labs/Vyakyarth` | ✅ | Resilient to preprocessing |
-| MuRIL | `google/muril-base-cased` | ❌ (needs pooling) | Academic standard |
-| MuRIL-SBERT (community) | `sbastola/muril-base-cased-sentence-transformer-snli` | ✅ | — |
+| Vyakyarth | `krutrim-ai-labs/Vyakyarth` | ✅ | Resilient to preprocessing, best Devanagari gain |
+| MuRIL | `google/muril-base-cased` | ❌ (needs pooling) | ⚠️ **Unsuitable for retrieval** — negative discrimination |
+| MuRIL-SBERT (community) | `sbastola/muril-base-cased-sentence-transformer-snli` | ✅ | Untested; may inherit MuRIL's issues |
 | Sanskrit ALBERT | `surajp/albert-base-sanskrit` | ❌ (needs pooling) | — |
-| LaBSE | `sentence-transformers/LaBSE` | ✅ | **Recommended** |
-| E5-multilingual | `intfloat/multilingual-e5-large` | ✅ | High recall, poor discrimination |
+| LaBSE | `sentence-transformers/LaBSE` | ✅ | **Recommended** — best overall |
+| E5-multilingual | `intfloat/multilingual-e5-large` | ✅ | Perfect Devanagari MRR, poor discrimination |
+| BGE-M3 | `BAAI/bge-m3` | ✅ | Best recall (1.0 R@3), mediocre MRR |
 | FastText Sanskrit | `cc.sa.300.bin` via `fasttext.util.download_model('sa')` | ❌ (word-level) | Domain-specific training |
 
 ---

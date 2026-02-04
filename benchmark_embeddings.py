@@ -37,6 +37,24 @@ except ImportError:
 # GPU support
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {DEVICE}")
+if DEVICE == "cuda":
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB total")
+
+
+def log_gpu_memory(context: str = ""):
+    """Log current GPU memory usage."""
+    if DEVICE == "cuda":
+        allocated = torch.cuda.memory_allocated() / 1e9
+        reserved = torch.cuda.memory_reserved() / 1e9
+        print(f"  GPU Memory ({context}): {allocated:.2f} GB allocated, {reserved:.2f} GB reserved")
+
+
+def clear_gpu_memory():
+    """Clear GPU memory cache."""
+    if DEVICE == "cuda":
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
 
 
 # =============================================================================
