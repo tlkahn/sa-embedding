@@ -130,12 +130,15 @@ class ModelConfig:
     name: str
     model_id: str
     prefix: str = ""  # Some models need query prefix (e.g., E5)
+    needs_pooling: bool = False  # True for models like MuRIL that need manual pooling
 
 
 MODELS = [
     ModelConfig("Vyakyarth", "krutrim-ai-labs/Vyakyarth"),
     ModelConfig("LaBSE", "sentence-transformers/LaBSE"),
     ModelConfig("E5-multilingual", "intfloat/multilingual-e5-large", prefix="query: "),
+    ModelConfig("MuRIL", "google/muril-base-cased", needs_pooling=True),
+    ModelConfig("BGE-M3", "BAAI/bge-m3"),
 ]
 
 
@@ -261,6 +264,59 @@ def preprocess_corpus_with_byt5(
 
 
 # =============================================================================
+# MuRIL Wrapper (Manual Pooling)
+# =============================================================================
+
+class MuRILWrapper:
+    """
+    Wrapper for MuRIL that provides SentenceTransformer-compatible interface.
+
+    MuRIL (google/muril-base-cased) is not a sentence transformer, so we need
+    to manually apply mean pooling to get sentence embeddings.
+    """
+
+    def __init__(self, model_id: str = "google/muril-base-cased", device: str = None):
+        from transformers import AutoTokenizer, AutoModel
+
+        self.device = device or DEVICE
+        print(f"Loading MuRIL with mean pooling: {model_id} on {self.device}")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        self.model = AutoModel.from_pretrained(model_id)
+        self.model.to(self.device)
+        self.model.eval()
+        self.model_id = model_id
+        self._embedding_dim = self.model.config.hidden_size
+
+    def _mean_pooling(self, model_output, attention_mask):
+        """Apply mean pooling to token embeddings."""
+        token_embeddings = model_output[0]  # First element is last_hidden_state
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        return sum_embeddings / sum_mask
+
+    def encode(self, sentences: list[str], **kwargs) -> np.ndarray:
+        """Encode sentences to embeddings using mean pooling."""
+        encoded = self.tokenizer(
+            sentences,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors="pt"
+        )
+        encoded = {k: v.to(self.device) for k, v in encoded.items()}
+
+        with torch.no_grad():
+            output = self.model(**encoded)
+
+        embeddings = self._mean_pooling(output, encoded["attention_mask"])
+        return embeddings.cpu().numpy()
+
+    def get_sentence_embedding_dimension(self) -> int:
+        return self._embedding_dim
+
+
+# =============================================================================
 # Transliteration Functions
 # =============================================================================
 
@@ -290,10 +346,20 @@ def transliterate_queries(test_cases: list[tuple[str, list[int]]]) -> list[tuple
     return result
 
 
-def load_model(config: ModelConfig) -> tuple[SentenceTransformer, float]:
-    """Load model and return (model, load_time_seconds). Uses GPU if available."""
+def load_model(config: ModelConfig):
+    """
+    Load model and return (model, load_time_seconds). Uses GPU if available.
+
+    Returns a model with .encode() and .get_sentence_embedding_dimension() methods.
+    For models that need pooling (e.g., MuRIL), uses a wrapper class.
+    """
     start = time.time()
-    model = SentenceTransformer(config.model_id, device=DEVICE)
+    if config.needs_pooling:
+        # Use wrapper with manual mean pooling
+        model = MuRILWrapper(config.model_id, device=DEVICE)
+    else:
+        # Use SentenceTransformer directly
+        model = SentenceTransformer(config.model_id, device=DEVICE)
     load_time = time.time() - start
     return model, load_time
 
