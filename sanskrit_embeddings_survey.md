@@ -36,7 +36,7 @@ Before embeddings, tokenization determines how text is segmented. Standard BPE t
 **Recommendations**:
 - For OpenAI/Anthropic APIs: Prefer Devanagari over IAST (marginally better tokenization)
 - For local models: Use Indic-specific tokenizers (Krutrim, IndicBERT)
-- Consider byte-level models (ByT5) that sidestep tokenization entirely
+- Byte-level models (ByT5-Sanskrit) excel at linguistic analysis but do not improve retrieval quality when used for preprocessing (see Section 5.7)
 
 ---
 
@@ -113,7 +113,7 @@ def sentence_embedding(text, model):
 **Caveats**:
 - Pre-trained vectors trained on modern web Sanskrit (Wikipedia, religious sites)
 - Domain mismatch for classical/tantric texts
-- Requires sandhi resolution before embedding (→ use ByT5-Sanskrit as preprocessor)
+- Works best with pre-segmented text, but note that segmentation may not help transformer-based embeddings (see Section 5.7)
 
 *Recommendation for specialized corpora*: Train custom fastText on domain texts (DCS, GRETIL śaiva corpus) rather than using CommonCrawl vectors:
 
@@ -234,7 +234,71 @@ LaBSE offers the best speed/quality tradeoff. E5-multilingual's larger dimension
 4. **Avoid E5-multilingual for fine-grained similarity** — its tight clustering (0.017 discrimination) makes threshold-based filtering unreliable
 5. **Vyakyarth underperforms on IAST** — despite Indic optimization claims, it struggles with romanized Sanskrit
 
-### 5.7 Recommended Transliteration Pipeline
+### 5.7 ByT5-Sanskrit Preprocessing Evaluation
+
+We evaluated whether preprocessing Sanskrit text with ByT5-Sanskrit (segmentation and/or lemmatization) improves embedding quality for retrieval tasks.
+
+**Preprocessing modes tested**:
+- **Segmentation**: Sandhi splitting (e.g., "ūrdhveprāṇo" → "ūrdhve prāṇo")
+- **Lemmatization**: Reduction to dictionary forms (e.g., "prāṇāpānau" → "prāṇa apāna")
+- **Both**: Segmentation followed by lemmatization
+
+#### Retrieval Impact (MRR)
+
+| Preprocessing | Vyakyarth | LaBSE | E5-multilingual |
+|---------------|-----------|-------|-----------------|
+| Raw IAST | 0.509 | **0.759** | 0.714 |
+| Segmented | 0.505 | 0.643 | 0.694 |
+| Lemmatized | 0.485 | 0.465 | 0.705 |
+| Seg + Lemma | 0.502 | 0.439 | 0.411 |
+
+#### MRR Delta from Preprocessing (negative = worse)
+
+| Model | Segmented | Lemmatized | Both |
+|-------|-----------|------------|------|
+| Vyakyarth | -0.004 | -0.024 | -0.006 |
+| LaBSE | **-0.116** | **-0.293** | **-0.319** |
+| E5-multilingual | -0.020 | -0.010 | **-0.304** |
+
+**Key findings**:
+
+1. **ByT5-Sanskrit preprocessing hurts retrieval performance** — All models showed MRR degradation with preprocessing, contrary to the intuition that cleaner text would improve similarity matching
+
+2. **LaBSE most negatively affected** — Dropped from 0.759 to 0.439 MRR (-42%) with combined preprocessing. LaBSE appears to have learned effective representations from unsegmented Sanskrit
+
+3. **Vyakyarth most resilient** — Minimal impact (-0.006 MRR), suggesting its Indic-specific training already handles sandhi internally
+
+4. **Lemmatization worse than segmentation** — Reducing inflected forms to lemmas loses grammatical information that embeddings capture
+
+5. **Combined preprocessing compounds errors** — E5-multilingual dropped from 0.714 to 0.411 (-42%) with both steps applied
+
+#### Similarity Discrimination with Preprocessing
+
+| Preprocessing | Vyakyarth | LaBSE | E5-multilingual |
+|---------------|-----------|-------|-----------------|
+| Raw IAST | 0.084 | **0.120** | 0.046 |
+| Segmented | **0.154** | 0.041 | 0.034 |
+| Lemmatized | 0.109 | 0.027 | 0.014 |
+
+**Interesting finding**: Vyakyarth's discrimination *improved* with segmentation (0.084 → 0.154), even though retrieval MRR decreased slightly. This suggests segmentation may help Vyakyarth distinguish semantic categories while slightly hurting exact match retrieval. LaBSE and E5 both degraded on discrimination.
+
+#### Why Preprocessing Hurts
+
+Several hypotheses explain why ByT5-Sanskrit preprocessing degrades embedding quality:
+
+1. **Information loss**: Lemmatization removes grammatical markers (case, number, tense) that carry semantic information
+2. **Domain mismatch**: Embedding models were trained on naturally-occurring Sanskrit text, not linguistically normalized forms
+3. **Tokenization disruption**: Segmented text may tokenize differently, fragmenting learned subword patterns
+4. **Training data alignment**: LaBSE and E5 likely saw sandhi-fused forms in training; segmented forms appear as novel sequences
+
+#### Recommendation
+
+**Do not use ByT5-Sanskrit preprocessing for retrieval tasks.** Instead:
+- Transliterate to Devanagari (17–42% MRR improvement)
+- Use raw text without segmentation or lemmatization
+- Reserve ByT5-Sanskrit for linguistic analysis tasks (morphological tagging, dependency parsing) where it achieves SOTA results
+
+### 5.8 Recommended Transliteration Pipeline
 
 ```python
 from aksharamukha import transliterate
@@ -278,11 +342,13 @@ Based on both literature review and empirical benchmarking:
 | **Cross-lingual (Sanskrit ↔ English)** | LaBSE | Either | Designed for cross-lingual retrieval |
 | **Script-agnostic search** | E5-multilingual | Either | 0.901 transliteration consistency |
 | **IAST-only corpus** | LaBSE | IAST | 0.759 MRR on IAST (best of tested) |
-| **Morphological preprocessing** | ByT5-Sanskrit | Either | SOTA segmentation/lemmatization |
+| **Linguistic analysis** | ByT5-Sanskrit | Either | SOTA segmentation/lemmatization/parsing |
 | **Domain-specific similarity** | Custom fastText | — | Trainable on small corpora |
 | **Speed-critical** | LaBSE | — | 4.81ms/text (fastest) |
 
-**Critical recommendation**: Transliterate IAST → Devanagari before embedding. All models improve 17–42% on MRR with Devanagari input.
+**Critical recommendations**:
+1. **Transliterate IAST → Devanagari** before embedding. All models improve 17–42% on MRR with Devanagari input.
+2. **Do NOT preprocess with ByT5-Sanskrit for retrieval** — segmentation/lemmatization hurts MRR by up to 42% (see Section 5.7). Use ByT5-Sanskrit only for linguistic analysis tasks.
 
 ---
 
@@ -301,13 +367,13 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 │  aksharamukha (normalize to Devanagari) ←── CRITICAL STEP   │
 │        │                                                     │
 │        ▼                                                     │
-│  ByT5-Sanskrit (segmentation, lemmatization) [optional]     │
-│        │                                                     │
-│        ▼                                                     │
 │  Embedding Model (LaBSE recommended)                        │
 │        │                                                     │
 │        ▼                                                     │
 │  pgvector (HNSW index, cosine distance)                     │
+│                                                              │
+│  NOTE: Do NOT use ByT5-Sanskrit preprocessing for retrieval │
+│  (see Section 5.7 — segmentation/lemmatization hurts MRR)   │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 
@@ -346,7 +412,8 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 
 1. **Devanagari normalization**: Empirical benchmarks show 17–42% MRR improvement over IAST for all models tested
 2. **LaBSE over Vyakyarth**: Despite Vyakyarth's Indic-specific training, LaBSE achieves better discrimination (0.236 vs 0.196) and comparable retrieval
-3. **Hybrid retrieval**: Dense embeddings capture conceptual similarity but struggle with technical vocabulary (द्वादशान्त, कुम्भक, भैरव). Sparse retrieval handles exact terminology. Fusion combines strengths
+3. **No ByT5-Sanskrit preprocessing**: Our benchmarks show segmentation/lemmatization *hurts* retrieval (up to -42% MRR for LaBSE). Embedding models have learned effective representations from naturally-occurring Sanskrit text
+4. **Hybrid retrieval**: Dense embeddings capture conceptual similarity but struggle with technical vocabulary (द्वादशान्त, कुम्भक, भैरव). Sparse retrieval handles exact terminology. Fusion combines strengths
 
 ---
 
@@ -368,6 +435,10 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 
 8. **E5's tight clustering problem**: E5-multilingual achieves high retrieval scores but poor discrimination (0.017–0.046). Understanding why general multilingual models cluster Sanskrit text so tightly could inform future model development.
 
+9. **Why does morphological preprocessing hurt retrieval?**: Our ByT5-Sanskrit experiments show that segmentation and lemmatization *degrade* retrieval quality (up to -42% MRR), contrary to the intuition that cleaner text should help. Possible explanations include: (a) embedding models learned from naturally-occurring sandhi-fused text, (b) lemmatization loses grammatical information encoded in embeddings, (c) segmented text tokenizes differently, disrupting learned patterns. This counterintuitive result deserves deeper investigation — when does linguistic normalization help vs. hurt neural models?
+
+10. **Model-specific preprocessing effects**: Vyakyarth's discrimination *improved* with segmentation (0.084 → 0.154) while retrieval MRR stayed flat. Understanding which models benefit from which preprocessing could enable model-specific pipelines.
+
 ---
 
 ## 9. Practical Recommendations
@@ -377,6 +448,7 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 2. Use `sentence-transformers/LaBSE` for best retrieval + discrimination balance
 3. Implement hybrid dense+sparse retrieval with Devanagari BM25 index
 4. Use LLM-based query expansion for English→Sanskrit bridging (expand to Devanagari terms)
+5. **Do NOT preprocess with ByT5-Sanskrit** — segmentation/lemmatization hurts retrieval (see Section 5.7)
 
 ### For maximum recall (at cost of precision):
 1. Use `intfloat/multilingual-e5-large` with Devanagari input
@@ -385,17 +457,24 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 
 ### For academic rigor:
 1. Use MuRIL with explicit methodology citation
-2. Report preprocessing steps (script normalization, sandhi resolution, lemmatization)
+2. Report preprocessing steps (script normalization only — not segmentation/lemmatization for retrieval)
 3. Create and release evaluation dataset for reproducibility
 4. Report results on both IAST and Devanagari to enable comparison
 
 ### For best quality (with effort):
 1. Normalize all text to Devanagari via aksharamukha
-2. Preprocess with ByT5-Sanskrit for segmentation (optional but helpful)
-3. Use LaBSE for embedding
-4. Fine-tune on domain-specific Sanskrit pairs if available
-5. Train custom fastText on your corpus as sparse retrieval component
-6. Benchmark systematically on your specific corpus before deployment
+2. Use LaBSE for embedding (raw text, no morphological preprocessing)
+3. Fine-tune on domain-specific Sanskrit pairs if available
+4. Train custom fastText on your corpus as sparse retrieval component
+5. Benchmark systematically on your specific corpus before deployment
+
+### When to use ByT5-Sanskrit:
+ByT5-Sanskrit achieves SOTA on linguistic analysis tasks but *hurts* retrieval quality. Use it for:
+- Morphological tagging and dependency parsing
+- Sandhi analysis for linguistic research
+- OCR post-correction
+- Preprocessing for machine translation pipelines
+- **NOT** for semantic search or retrieval systems
 
 ---
 
@@ -477,25 +556,39 @@ def sentence_vec(text, model):
     return np.mean(vecs, axis=0) if vecs else np.zeros(model.get_dimension())
 ```
 
-### 10.5 Preprocessing Pipeline with ByT5-Sanskrit
+### 10.5 ByT5-Sanskrit for Linguistic Analysis (NOT for Retrieval)
+
+⚠️ **Warning**: Do not use ByT5-Sanskrit preprocessing for semantic search or retrieval. Our benchmarks show it degrades MRR by up to 42% (see Section 5.7). Use only for linguistic analysis tasks.
 
 ```python
-# For segmentation before embedding
+# For linguistic analysis tasks (morphological tagging, parsing, OCR correction)
+# NOT for retrieval preprocessing
 # See: https://github.com/sebastian-nehrdich/byt5-sanskrit-analyzers
 
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import T5ForConditionalGeneration, AutoTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained("sebastian-nehrdich/byt5-sanskrit-analyzers")
-model = AutoModelForSeq2SeqLM.from_pretrained("sebastian-nehrdich/byt5-sanskrit-analyzers")
+tokenizer = AutoTokenizer.from_pretrained("chronbmm/sanskrit5-multitask")
+model = T5ForConditionalGeneration.from_pretrained("chronbmm/sanskrit5-multitask")
 
 def segment_sanskrit(text):
-    inputs = tokenizer(f"segment: {text}", return_tensors="pt")
-    outputs = model.generate(**inputs, max_length=512)
+    """Sandhi splitting - use for linguistic analysis, NOT retrieval."""
+    inputs = tokenizer(f"S{text}", return_tensors="pt")  # S = segmentation task
+    outputs = model.generate(**inputs, max_length=512, num_beams=4)
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-# Then embed the segmented output
-segmented = segment_sanskrit("ūrdhveprāṇohyadhojīvo")
-embedding = your_embedding_model.encode(segmented)
+def lemmatize_sanskrit(text):
+    """Lemmatization - use for linguistic analysis, NOT retrieval."""
+    inputs = tokenizer(f"L{text}", return_tensors="pt")  # L = lemmatization task
+    outputs = model.generate(**inputs, max_length=512, num_beams=4)
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+# Example: linguistic analysis
+text = "ūrdhve prāṇo hy adho jīvo"
+print(f"Segmented: {segment_sanskrit(text)}")
+print(f"Lemmatized: {lemmatize_sanskrit(text)}")
+
+# For retrieval, use raw Devanagari text instead:
+# embedding = labse_model.encode(["ऊर्ध्वे प्राणो ह्यधो जीवो"])
 ```
 
 ---
@@ -522,19 +615,19 @@ embedding = your_embedding_model.encode(segmented)
 
 ### Model Repositories
 
-| Model | HuggingFace ID | Sentence-Native |
-|-------|----------------|-----------------|
-| ByT5-Sanskrit | `sebastian-nehrdich/byt5-sanskrit-analyzers` | ❌ (task model) |
-| Vyakyarth | `krutrim-ai-labs/Vyakyarth` | ✅ |
-| MuRIL | `google/muril-base-cased` | ❌ (needs pooling) |
-| MuRIL-SBERT (community) | `sbastola/muril-base-cased-sentence-transformer-snli` | ✅ |
-| Sanskrit ALBERT | `surajp/albert-base-sanskrit` | ❌ (needs pooling) |
-| LaBSE | `sentence-transformers/LaBSE` | ✅ |
-| E5-multilingual | `intfloat/multilingual-e5-large` | ✅ |
-| FastText Sanskrit | `cc.sa.300.bin` via `fasttext.util.download_model('sa')` | ❌ (word-level) |
+| Model | HuggingFace ID | Sentence-Native | Notes |
+|-------|----------------|-----------------|-------|
+| ByT5-Sanskrit | `chronbmm/sanskrit5-multitask` | ❌ (task model) | Linguistic analysis only; hurts retrieval |
+| Vyakyarth | `krutrim-ai-labs/Vyakyarth` | ✅ | Resilient to preprocessing |
+| MuRIL | `google/muril-base-cased` | ❌ (needs pooling) | Academic standard |
+| MuRIL-SBERT (community) | `sbastola/muril-base-cased-sentence-transformer-snli` | ✅ | — |
+| Sanskrit ALBERT | `surajp/albert-base-sanskrit` | ❌ (needs pooling) | — |
+| LaBSE | `sentence-transformers/LaBSE` | ✅ | **Recommended** |
+| E5-multilingual | `intfloat/multilingual-e5-large` | ✅ | High recall, poor discrimination |
+| FastText Sanskrit | `cc.sa.300.bin` via `fasttext.util.download_model('sa')` | ❌ (word-level) | Domain-specific training |
 
 ---
 
 *Last updated: February 2025*
 
-*This survey was prepared for practical application to Sanskrit manuscript retrieval systems. Section 5 contains original empirical benchmarks conducted on tantric/yogic Sanskrit texts — the benchmark code is available in this repository (`benchmark_embeddings.py`). Corrections and additions welcome.*
+*This survey was prepared for practical application to Sanskrit manuscript retrieval systems. Section 5 contains original empirical benchmarks conducted on tantric/yogic Sanskrit texts, including evaluation of ByT5-Sanskrit preprocessing effects on retrieval quality. The benchmark code is available in this repository (`benchmark_embeddings.py` with `--byt5` flag for preprocessing experiments). Corrections and additions welcome.*
