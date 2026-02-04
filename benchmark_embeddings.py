@@ -11,14 +11,16 @@ Metrics:
 - Semantic similarity consistency
 - Retrieval accuracy (MRR, Recall@k)
 - Cross-lingual retrieval (English → Sanskrit)
+- Script comparison (IAST vs Devanagari via transliteration)
 """
 
 import time
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from aksharamukha import transliterate
 
 
 # =============================================================================
@@ -118,6 +120,41 @@ class BenchmarkResult:
     retrieval_recall_at_1: float
     retrieval_recall_at_3: float
     cross_script_similarity: float
+    # Transliteration benchmark results (Devanagari)
+    retrieval_mrr_devanagari: float = 0.0
+    retrieval_recall_at_1_devanagari: float = 0.0
+    retrieval_recall_at_3_devanagari: float = 0.0
+    transliteration_consistency: float = 0.0  # IAST embedding vs transliterated Devanagari embedding
+
+
+# =============================================================================
+# Transliteration Functions
+# =============================================================================
+
+def transliterate_iast_to_devanagari(text: str) -> str:
+    """Transliterate IAST text to Devanagari using aksharamukha."""
+    return transliterate.process("IAST", "Devanagari", text)
+
+
+def transliterate_corpus(corpus: list[str]) -> list[str]:
+    """Transliterate entire corpus from IAST to Devanagari."""
+    return [transliterate_iast_to_devanagari(text) for text in corpus]
+
+
+def transliterate_queries(test_cases: list[tuple[str, list[int]]]) -> list[tuple[str, list[int]]]:
+    """
+    Transliterate Sanskrit queries to Devanagari.
+    English queries are kept as-is.
+    """
+    result = []
+    for query, indices in test_cases:
+        # Check if query contains Sanskrit (IAST diacritics)
+        if any(c in query for c in "āīūṛṝḷḹēōṃḥṅñṭḍṇśṣ"):
+            result.append((transliterate_iast_to_devanagari(query), indices))
+        else:
+            # English query - keep as-is
+            result.append((query, indices))
+    return result
 
 
 def load_model(config: ModelConfig) -> tuple[SentenceTransformer, float]:
@@ -238,12 +275,34 @@ def run_benchmark(config: ModelConfig) -> BenchmarkResult:
     cross_script_avg = np.mean(cross_script_scores)
     print(f"  Average cross-script similarity: {cross_script_avg:.3f}")
 
-    # Retrieval evaluation
-    print("Evaluating retrieval performance...")
+    # Retrieval evaluation (IAST)
+    print("Evaluating retrieval performance (IAST corpus)...")
     mrr, r1, r3 = evaluate_retrieval(model, SANSKRIT_CORPUS, RETRIEVAL_TEST_CASES, config.prefix)
     print(f"  MRR: {mrr:.3f}")
     print(f"  Recall@1: {r1:.3f}")
     print(f"  Recall@3: {r3:.3f}")
+
+    # Transliteration benchmark (Devanagari)
+    print("Transliterating corpus to Devanagari...")
+    corpus_devanagari = transliterate_corpus(SANSKRIT_CORPUS)
+    queries_devanagari = transliterate_queries(RETRIEVAL_TEST_CASES)
+
+    print("Evaluating retrieval performance (Devanagari corpus)...")
+    mrr_deva, r1_deva, r3_deva = evaluate_retrieval(
+        model, corpus_devanagari, queries_devanagari, config.prefix
+    )
+    print(f"  MRR: {mrr_deva:.3f}")
+    print(f"  Recall@1: {r1_deva:.3f}")
+    print(f"  Recall@3: {r3_deva:.3f}")
+
+    # Transliteration consistency: compare IAST vs transliterated Devanagari embeddings
+    print("Evaluating transliteration consistency...")
+    consistency_scores = []
+    for iast_text, deva_text in zip(SANSKRIT_CORPUS, corpus_devanagari):
+        score = compute_similarity(model, iast_text, deva_text, config.prefix)
+        consistency_scores.append(score)
+    transliteration_consistency = float(np.mean(consistency_scores))
+    print(f"  Avg IAST<->Transliterated Devanagari similarity: {transliteration_consistency:.3f}")
 
     return BenchmarkResult(
         model_name=config.name,
@@ -256,6 +315,10 @@ def run_benchmark(config: ModelConfig) -> BenchmarkResult:
         retrieval_recall_at_1=r1,
         retrieval_recall_at_3=r3,
         cross_script_similarity=cross_script_avg,
+        retrieval_mrr_devanagari=mrr_deva,
+        retrieval_recall_at_1_devanagari=r1_deva,
+        retrieval_recall_at_3_devanagari=r3_deva,
+        transliteration_consistency=transliteration_consistency,
     )
 
 
@@ -307,6 +370,48 @@ def print_comparison_table(results: list[BenchmarkResult]):
     print(f"{'Retrieval Recall@3':<30} ", end="")
     for r in results:
         print(f"{r.retrieval_recall_at_3:<18.3f} ", end="")
+    print()
+
+    # Devanagari retrieval results
+    print("\n" + "-" * 80)
+    print("DEVANAGARI CORPUS (via aksharamukha transliteration)")
+    print("-" * 80)
+
+    print(f"{'Retrieval MRR (Devanagari)':<30} ", end="")
+    for r in results:
+        print(f"{r.retrieval_mrr_devanagari:<18.3f} ", end="")
+    print()
+
+    print(f"{'Retrieval R@1 (Devanagari)':<30} ", end="")
+    for r in results:
+        print(f"{r.retrieval_recall_at_1_devanagari:<18.3f} ", end="")
+    print()
+
+    print(f"{'Retrieval R@3 (Devanagari)':<30} ", end="")
+    for r in results:
+        print(f"{r.retrieval_recall_at_3_devanagari:<18.3f} ", end="")
+    print()
+
+    print(f"{'Transliteration Consistency':<30} ", end="")
+    for r in results:
+        print(f"{r.transliteration_consistency:<18.3f} ", end="")
+    print()
+
+    # Delta between IAST and Devanagari
+    print("\n" + "-" * 80)
+    print("IAST vs Devanagari Delta (positive = IAST better)")
+    print("-" * 80)
+
+    print(f"{'MRR Delta':<30} ", end="")
+    for r in results:
+        delta = r.retrieval_mrr - r.retrieval_mrr_devanagari
+        print(f"{delta:<+18.3f} ", end="")
+    print()
+
+    print(f"{'R@1 Delta':<30} ", end="")
+    for r in results:
+        delta = r.retrieval_recall_at_1 - r.retrieval_recall_at_1_devanagari
+        print(f"{delta:<+18.3f} ", end="")
     print()
 
     # Similarity discrimination
