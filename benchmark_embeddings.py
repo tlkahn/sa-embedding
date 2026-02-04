@@ -876,7 +876,7 @@ def print_comparison_table(results: list[BenchmarkResult]):
 
     # VBT (Vijñānabhairavatantra) corpus results
     print("\n" + "-" * 80)
-    print("VBT CORPUS (Vijñānabhairavatantra - 22 verses)")
+    print(f"VBT CORPUS (Vijñānabhairavatantra - {len(VBT_CORPUS)} verses)")
     print("-" * 80)
 
     print(f"{'Cross-lingual MRR (En→Sa)':<30} ", end="")

@@ -36,7 +36,7 @@ Before embeddings, tokenization determines how text is segmented. Standard BPE t
 **Recommendations**:
 - For OpenAI/Anthropic APIs: Prefer Devanagari over IAST (marginally better tokenization)
 - For local models: Use Indic-specific tokenizers (Krutrim, IndicBERT)
-- Byte-level models (ByT5-Sanskrit) excel at linguistic analysis but do not improve retrieval quality when used for preprocessing (see Section 5.8)
+- Byte-level models (ByT5-Sanskrit) excel at linguistic analysis but do not improve retrieval quality when used for preprocessing (see Section 5.10)
 
 ---
 
@@ -113,7 +113,7 @@ def sentence_embedding(text, model):
 **Caveats**:
 - Pre-trained vectors trained on modern web Sanskrit (Wikipedia, religious sites)
 - Domain mismatch for classical/tantric texts
-- Works best with pre-segmented text, but note that segmentation may not help transformer-based embeddings (see Section 5.8)
+- Works best with pre-segmented text, but note that segmentation may not help transformer-based embeddings (see Section 5.10)
 
 *Recommendation for specialized corpora*: Train custom fastText on domain texts (DCS, GRETIL śaiva corpus) rather than using CommonCrawl vectors:
 
@@ -276,7 +276,89 @@ This measures whether a model produces similar embeddings for the same text in d
 - **Vyakyarth's low consistency** (0.343) explains its dramatic Devanagari improvement: it learned different representations for each script
 - **LaBSE** balances script awareness with cross-script retrieval capability
 
-### 5.6 Performance Characteristics
+### 5.6 VBT Corpus: Cross-Lingual Retrieval
+
+To evaluate cross-lingual performance on a substantive corpus, we benchmarked the models on 168 verses from the Vijñānabhairavatantra (VBT) with their English translations.
+
+#### Cross-Lingual Retrieval (English → Sanskrit)
+
+| Metric | Vyakyarth | LaBSE | E5-multilingual | MuRIL | BGE-M3 |
+|--------|-----------|-------|-----------------|-------|--------|
+| MRR (En→Sa) | 0.162 | 0.257 | **0.317** | 0.074 | 0.278 |
+| Recall@1 | 0.097 | 0.161 | **0.226** | 0.000 | 0.161 |
+| Recall@3 | 0.097 | 0.258 | 0.323 | 0.065 | **0.355** |
+
+#### Translation→Verse Matching
+
+This measures how well models match English translations back to their source Sanskrit verses — useful for cross-referencing commentarial traditions.
+
+| Model | Translation→Verse MRR |
+|-----------------|-----------------------|
+| E5-multilingual | **0.820** |
+| BGE-M3 | 0.766 |
+| LaBSE | 0.575 |
+| Vyakyarth | 0.457 |
+| MuRIL | 0.229 |
+
+#### VBT Similarity Discrimination
+
+| Model | Similar | Dissimilar | Discrimination |
+|-----------------|---------|------------|----------------|
+| Vyakyarth | 0.532 | 0.270 | **0.263** |
+| LaBSE | 0.493 | 0.254 | **0.240** |
+| BGE-M3 | 0.614 | 0.469 | 0.145 |
+| E5-multilingual | 0.891 | 0.840 | 0.050 |
+| MuRIL | 0.994 | 0.992 | 0.002 |
+
+**Key findings**:
+
+1. **E5-multilingual dominates cross-lingual retrieval** — 0.820 Translation→Verse MRR is substantially higher than other models
+2. **MuRIL fails completely** — 0.0 Recall@1 means it never ranks the correct Sanskrit verse first when given an English translation
+3. **Vyakyarth and LaBSE have best discrimination** — the gap between similar and dissimilar pairs (0.263 and 0.240) enables reliable semantic ranking
+4. **E5's high retrieval contradicts its poor discrimination** — it retrieves well but can't threshold reliably (everything clusters at 0.84–0.89)
+
+### 5.7 Semantic Search Implications
+
+The discrimination metric is critical for semantic search: you need models that assign high similarity to genuinely related passages and low similarity to unrelated ones.
+
+#### The Core Problem
+
+| Model | VBT Similar | VBT Dissimilar | Gap | Practical Impact |
+|-----------------|-------------|----------------|-------|------------------|
+| Vyakyarth | 0.532 | 0.270 | **0.263** | Usable ranking |
+| LaBSE | 0.493 | 0.254 | **0.240** | Usable ranking |
+| BGE-M3 | 0.614 | 0.469 | 0.145 | Marginal ranking |
+| E5-multilingual | 0.891 | 0.840 | 0.050 | Unreliable ranking |
+| MuRIL | 0.994 | 0.992 | 0.002 | **Useless** |
+
+**MuRIL** is essentially useless for semantic search — it assigns 99.4% similarity to a verse and its translation, but also 99.2% similarity to completely unrelated verses. Search results would be noise.
+
+**E5-multilingual** has the same problem at smaller scale: everything clusters in the 0.84–0.89 range. When searching for dhāraṇā techniques, you'd retrieve meditation verses mixed with cosmological verses indiscriminately.
+
+**Vyakyarth and LaBSE** actually discriminate well — related texts score ~0.5, unrelated texts ~0.25. This gives usable ranking for "find verses semantically related to X."
+
+#### Model Selection by Goal
+
+| Goal | Best Model | Rationale |
+|---------------------------------|------------------------|-----------|
+| Cross-lingual retrieval (En↔Sa) | E5-multilingual | Highest Translation→Verse MRR (0.820) |
+| Script-agnostic matching | MuRIL* | 0.987 transliteration consistency |
+| **Semantic search / ranking** | **Vyakyarth or LaBSE** | Best discrimination (0.263 / 0.240) |
+
+*MuRIL's script consistency is misleading — it reflects clustering everything at ~0.99, not genuine understanding.
+
+#### Recommended Two-Stage Pipeline
+
+For workflows requiring both good recall and semantic discrimination:
+
+1. **Coarse retrieval** with E5-multilingual (high recall, gets candidates)
+2. **Reranking** with Vyakyarth or LaBSE (better discrimination for final ranking)
+
+Alternatively, for pure Sanskrit-to-Sanskrit semantic search within a manuscript corpus, **Vyakyarth** may be the right choice despite its poor cross-lingual scores — it has the best discrimination on the VBT data (0.263).
+
+The irony: the Sanskrit-specific Vyakyarth model underperforms the general multilingual models on cross-lingual tasks, likely due to limited training data compared to massive multilingual corpora. But it excels at the discrimination task that matters most for semantic search.
+
+### 5.8 Performance Characteristics
 
 | Model | Load Time | Encode Time (GPU) | Embedding Dim |
 |-------|-----------|-------------------|---------------|
@@ -294,26 +376,28 @@ This measures whether a model produces similar embeddings for the same text in d
 - **Vyakyarth is slowest** at encoding (29.77ms/text) — unclear why given similar architecture
 - **LaBSE offers the best speed/quality tradeoff** — fast encoding (2.65ms) with best retrieval quality
 
-### 5.7 Benchmark Conclusions
+### 5.9 Benchmark Conclusions
 
 1. **Always transliterate IAST to Devanagari** before embedding — all models improve substantially (17–42% MRR gain)
-2. **Use LaBSE for best overall performance** — highest IAST MRR (0.759), best discrimination (0.236 on Devanagari)
-3. **Avoid MuRIL for semantic search** — despite academic citations, its mean-pooled embeddings have negative discrimination (-0.005), making it useless for retrieval
-4. **Use BGE-M3 for maximum recall** — achieves perfect Recall@3 on IAST (1.0) but mediocre precision
-5. **E5-multilingual achieves perfect Devanagari retrieval** — but poor discrimination (0.017) makes thresholding unreliable
-6. **Vyakyarth underperforms on IAST** — despite Indic optimization claims, it struggles with romanized Sanskrit
+2. **Use E5-multilingual for cross-lingual retrieval** — 0.820 Translation→Verse MRR on VBT corpus
+3. **Use Vyakyarth or LaBSE for semantic search/ranking** — best discrimination (0.263 / 0.240 on VBT)
+4. **Avoid MuRIL for semantic search** — despite academic citations, its mean-pooled embeddings have negative discrimination (-0.005), making it useless for retrieval
+5. **Consider a two-stage pipeline** — E5 for coarse retrieval, then Vyakyarth/LaBSE for reranking
+6. **BGE-M3 for maximum recall** — achieves perfect Recall@3 on IAST (1.0) but mediocre precision
+7. **Vyakyarth excels at discrimination despite poor cross-lingual scores** — the Sanskrit-specific model shines for semantic ranking within a Sanskrit corpus
 
 **Model rankings by use case**:
 
 | Use Case | Best | Second | Avoid |
 |----------|------|--------|-------|
-| Overall retrieval | LaBSE | E5-multilingual | MuRIL |
-| Semantic discrimination | LaBSE | Vyakyarth | MuRIL |
+| Cross-lingual (En↔Sa) | E5-multilingual | BGE-M3 | MuRIL |
+| Semantic search/ranking | Vyakyarth | LaBSE | MuRIL, E5 |
 | Maximum recall | BGE-M3 | E5-multilingual | Vyakyarth |
 | IAST-only corpus | LaBSE | E5-multilingual | MuRIL |
 | Script-agnostic | E5-multilingual | BGE-M3 | Vyakyarth |
+| Devanagari internal retrieval | E5-multilingual | LaBSE | MuRIL |
 
-### 5.8 ByT5-Sanskrit Preprocessing Evaluation
+### 5.10 ByT5-Sanskrit Preprocessing Evaluation
 
 We evaluated whether preprocessing Sanskrit text with ByT5-Sanskrit (segmentation and/or lemmatization) improves embedding quality for retrieval tasks.
 
@@ -377,7 +461,7 @@ Several hypotheses explain why ByT5-Sanskrit preprocessing degrades embedding qu
 - Use raw text without segmentation or lemmatization
 - Reserve ByT5-Sanskrit for linguistic analysis tasks (morphological tagging, dependency parsing) where it achieves SOTA results
 
-### 5.9 Recommended Transliteration Pipeline
+### 5.11 Recommended Transliteration Pipeline
 
 ```python
 from aksharamukha import transliterate
@@ -410,16 +494,16 @@ embedding = embed_sanskrit("ūrdhve prāṇo hy adho jīvo", model, source_scrip
 
 ## 6. Comparative Summary
 
-Based on both literature review and empirical benchmarking on 5 models:
+Based on both literature review and empirical benchmarking on 5 models (including VBT corpus with 168 verses):
 
 | Use Case | Recommended Model | Script | Rationale |
 |----------|-------------------|--------|-----------|
-| **Best overall retrieval** | LaBSE | Devanagari | Best MRR (0.759 IAST, 0.929 Devanagari) + discrimination |
+| **Cross-lingual (En↔Sa)** | E5-multilingual | Either | 0.820 Translation→Verse MRR on VBT corpus |
+| **Semantic search/ranking** | Vyakyarth or LaBSE | Devanagari | Best discrimination (0.263 / 0.240 on VBT) |
 | **Maximum recall** | BGE-M3 | Either | Perfect Recall@3 on IAST (1.0), good Devanagari |
-| **Semantic discrimination** | LaBSE | Devanagari | 0.236 discrimination score (highest of 5 models) |
+| **Devanagari internal retrieval** | E5-multilingual | Devanagari | Perfect MRR (1.0) on Devanagari corpus |
 | **Academic publication** | LaBSE | Devanagari | Peer-reviewed (ACL 2022); MuRIL fails for retrieval |
-| **Cross-lingual (Sanskrit ↔ English)** | LaBSE | Either | Designed for cross-lingual retrieval |
-| **Script-agnostic search** | E5-multilingual | Either | 0.901 transliteration consistency, perfect Devanagari MRR |
+| **Script-agnostic search** | E5-multilingual | Either | 0.901 transliteration consistency |
 | **IAST-only corpus** | LaBSE | IAST | 0.759 MRR on IAST (best of 5 models) |
 | **Linguistic analysis** | ByT5-Sanskrit | Either | SOTA segmentation/lemmatization/parsing |
 | **Domain-specific similarity** | Custom fastText | — | Trainable on small corpora |
@@ -427,8 +511,10 @@ Based on both literature review and empirical benchmarking on 5 models:
 
 **Critical recommendations**:
 1. **Transliterate IAST → Devanagari** before embedding. All models improve 12–42% on MRR with Devanagari input.
-2. **Do NOT use MuRIL for semantic search** — despite academic citations, it has negative discrimination (-0.005) and clusters all text at ~0.99 similarity.
-3. **Do NOT preprocess with ByT5-Sanskrit for retrieval** — segmentation/lemmatization hurts MRR by up to 42% (see Section 5.8). Use ByT5-Sanskrit only for linguistic analysis tasks.
+2. **Use a two-stage pipeline for best results**: E5-multilingual for coarse retrieval (high recall), then Vyakyarth or LaBSE for reranking (better discrimination).
+3. **Do NOT use MuRIL for semantic search** — despite academic citations, it has negative discrimination (-0.005) and clusters all text at ~0.99 similarity.
+4. **Do NOT preprocess with ByT5-Sanskrit for retrieval** — segmentation/lemmatization hurts MRR by up to 42% (see Section 5.10). Use ByT5-Sanskrit only for linguistic analysis tasks.
+5. **For pure Sanskrit semantic search**, Vyakyarth has the best discrimination (0.263) despite underperforming on cross-lingual tasks.
 
 ---
 
@@ -447,13 +533,12 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 │  aksharamukha (normalize to Devanagari) ←── CRITICAL STEP   │
 │        │                                                     │
 │        ▼                                                     │
-│  Embedding Model (LaBSE recommended)                        │
-│        │                                                     │
-│        ▼                                                     │
-│  pgvector (HNSW index, cosine distance)                     │
+│  Dual Embedding (for two-stage retrieval):                  │
+│    • E5-multilingual → pgvector index (coarse retrieval)    │
+│    • Vyakyarth/LaBSE → pgvector index (reranking)           │
 │                                                              │
 │  NOTE: Do NOT use ByT5-Sanskrit preprocessing for retrieval │
-│  (see Section 5.8 — segmentation/lemmatization hurts MRR)   │
+│  (see Section 5.10 — segmentation/lemmatization hurts MRR)  │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 
@@ -471,7 +556,7 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 │  e.g., "breath practice" → प्राण, कुम्भक, धारणा            │
 │        │                                                     │
 │        ▼                                                     │
-│  Embed expanded query (LaBSE)                               │
+│  STAGE 1: Coarse Retrieval (E5-multilingual)                │
 │        │                                                     │
 │        ├──────────────┐                                      │
 │        ▼              ▼                                      │
@@ -480,10 +565,14 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 │        │              │                                      │
 │        └──────┬───────┘                                      │
 │               ▼                                              │
-│  Reciprocal Rank Fusion                                     │
+│  Reciprocal Rank Fusion → Top-k candidates                  │
 │               │                                              │
 │               ▼                                              │
-│  Top-k results → LLM reranking (optional)                   │
+│  STAGE 2: Reranking (Vyakyarth or LaBSE)                    │
+│  (better discrimination: 0.263 / 0.240 vs E5's 0.050)       │
+│               │                                              │
+│               ▼                                              │
+│  Final ranked results                                        │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -491,9 +580,10 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 **Rationale for architecture choices**:
 
 1. **Devanagari normalization**: Empirical benchmarks show 17–42% MRR improvement over IAST for all models tested
-2. **LaBSE over Vyakyarth**: Despite Vyakyarth's Indic-specific training, LaBSE achieves better discrimination (0.236 vs 0.196) and comparable retrieval
-3. **No ByT5-Sanskrit preprocessing**: Our benchmarks show segmentation/lemmatization *hurts* retrieval (up to -42% MRR for LaBSE). Embedding models have learned effective representations from naturally-occurring Sanskrit text
-4. **Hybrid retrieval**: Dense embeddings capture conceptual similarity but struggle with technical vocabulary (द्वादशान्त, कुम्भक, भैरव). Sparse retrieval handles exact terminology. Fusion combines strengths
+2. **Two-stage pipeline**: E5-multilingual excels at cross-lingual retrieval (0.820 Translation→Verse MRR) but has poor discrimination (0.050). Vyakyarth/LaBSE have best discrimination (0.263/0.240) for final ranking. Combining both leverages their complementary strengths.
+3. **Vyakyarth for reranking**: The Sanskrit-specific model underperforms on cross-lingual but has the best semantic discrimination — ideal for final ranking within a Sanskrit corpus
+4. **No ByT5-Sanskrit preprocessing**: Our benchmarks show segmentation/lemmatization *hurts* retrieval (up to -42% MRR for LaBSE). Embedding models have learned effective representations from naturally-occurring Sanskrit text
+5. **Hybrid retrieval**: Dense embeddings capture conceptual similarity but struggle with technical vocabulary (द्वादशान्त, कुम्भक, भैरव). Sparse retrieval handles exact terminology. Fusion combines strengths
 
 ---
 
@@ -525,15 +615,25 @@ For a pgvector-based retrieval system over texts like the Vijñānabhairava:
 
 ### For immediate deployment:
 1. **Always transliterate to Devanagari** using `aksharamukha` before embedding — this is the single highest-impact optimization (17–42% MRR improvement)
-2. Use `sentence-transformers/LaBSE` for best retrieval + discrimination balance
+2. **Use a two-stage pipeline**: E5-multilingual for coarse retrieval → Vyakyarth or LaBSE for reranking
 3. Implement hybrid dense+sparse retrieval with Devanagari BM25 index
 4. Use LLM-based query expansion for English→Sanskrit bridging (expand to Devanagari terms)
-5. **Do NOT preprocess with ByT5-Sanskrit** — segmentation/lemmatization hurts retrieval (see Section 5.8)
+5. **Do NOT preprocess with ByT5-Sanskrit** — segmentation/lemmatization hurts retrieval (see Section 5.10)
+
+### For cross-lingual retrieval (English ↔ Sanskrit):
+1. Use `intfloat/multilingual-e5-large` — 0.820 Translation→Verse MRR on VBT corpus
+2. Best for matching English translations back to Sanskrit source verses
+3. Critical for cross-referencing commentarial traditions
+
+### For semantic search / ranking:
+1. Use `krutrim-ai-labs/Vyakyarth` or `sentence-transformers/LaBSE`
+2. Best discrimination (0.263 / 0.240) enables reliable "find similar verses" queries
+3. For pure Sanskrit-to-Sanskrit search, Vyakyarth may be optimal despite poor cross-lingual scores
 
 ### For maximum recall (at cost of precision):
 1. Use `intfloat/multilingual-e5-large` with Devanagari input
-2. Accept that similarity thresholds will be unreliable (0.017 discrimination)
-3. Rely on downstream reranking to filter false positives
+2. Accept that similarity thresholds will be unreliable (0.050 discrimination)
+3. Rely on downstream reranking with Vyakyarth/LaBSE to filter false positives
 
 ### For academic rigor:
 1. **Use LaBSE** (peer-reviewed ACL 2022) — NOT MuRIL, which has catastrophic discrimination failure for retrieval tasks
@@ -561,23 +661,43 @@ ByT5-Sanskrit achieves SOTA on linguistic analysis tasks but *hurts* retrieval q
 
 ## 10. Model Quick Reference
 
-### 10.1 Recommended: LaBSE with Devanagari Transliteration
+### 10.1 Recommended: Two-Stage Pipeline with Devanagari Transliteration
 
 ```python
 from sentence_transformers import SentenceTransformer
 from aksharamukha import transliterate
+import numpy as np
 
-# Load model (best overall for Sanskrit)
-model = SentenceTransformer("sentence-transformers/LaBSE")
+# Load models for two-stage retrieval
+e5_model = SentenceTransformer("intfloat/multilingual-e5-large")      # Stage 1: retrieval
+rerank_model = SentenceTransformer("krutrim-ai-labs/Vyakyarth")       # Stage 2: reranking
+# Alternative reranker: SentenceTransformer("sentence-transformers/LaBSE")
 
-def embed_sanskrit(text: str, source_script: str = "IAST"):
+def embed_sanskrit(text: str, model: SentenceTransformer, source_script: str = "IAST"):
     """Embed Sanskrit with automatic Devanagari normalization."""
     if source_script != "Devanagari":
         text = transliterate.process(source_script, "Devanagari", text)
     return model.encode([text])[0]
 
+def two_stage_search(query: str, corpus_embeddings: np.ndarray, corpus_texts: list,
+                     top_k: int = 10, rerank_top: int = 50):
+    """Two-stage retrieval: E5 for recall, Vyakyarth for discrimination."""
+    # Stage 1: Coarse retrieval with E5
+    query_emb = embed_sanskrit(query, e5_model)
+    scores = np.dot(corpus_embeddings, query_emb)
+    top_indices = np.argsort(scores)[-rerank_top:][::-1]
+
+    # Stage 2: Rerank with Vyakyarth (better discrimination: 0.263 vs 0.050)
+    candidates = [corpus_texts[i] for i in top_indices]
+    rerank_query = embed_sanskrit(query, rerank_model)
+    rerank_corpus = rerank_model.encode(candidates)
+    rerank_scores = np.dot(rerank_corpus, rerank_query)
+
+    final_indices = np.argsort(rerank_scores)[-top_k:][::-1]
+    return [(candidates[i], rerank_scores[i]) for i in final_indices]
+
 # Usage
-embedding = embed_sanskrit("ūrdhve prāṇo hy adho jīvo", source_script="IAST")
+embedding = embed_sanskrit("ūrdhve prāṇo hy adho jīvo", e5_model, source_script="IAST")
 # Equivalent to embedding "ऊर्ध्वे प्राणो ह्यधो जीवो"
 ```
 
@@ -639,7 +759,7 @@ def sentence_vec(text, model):
 
 ### 10.5 ByT5-Sanskrit for Linguistic Analysis (NOT for Retrieval)
 
-⚠️ **Warning**: Do not use ByT5-Sanskrit preprocessing for semantic search or retrieval. Our benchmarks show it degrades MRR by up to 42% (see Section 5.8). Use only for linguistic analysis tasks.
+⚠️ **Warning**: Do not use ByT5-Sanskrit preprocessing for semantic search or retrieval. Our benchmarks show it degrades MRR by up to 42% (see Section 5.10). Use only for linguistic analysis tasks.
 
 ```python
 # For linguistic analysis tasks (morphological tagging, parsing, OCR correction)
@@ -699,17 +819,17 @@ print(f"Lemmatized: {lemmatize_sanskrit(text)}")
 | Model | HuggingFace ID | Sentence-Native | Notes |
 |-------|----------------|-----------------|-------|
 | ByT5-Sanskrit | `chronbmm/sanskrit5-multitask` | ❌ (task model) | Linguistic analysis only; hurts retrieval |
-| Vyakyarth | `krutrim-ai-labs/Vyakyarth` | ✅ | Resilient to preprocessing, best Devanagari gain |
+| Vyakyarth | `krutrim-ai-labs/Vyakyarth` | ✅ | **Best discrimination (0.263)** — ideal for reranking |
 | MuRIL | `google/muril-base-cased` | ❌ (needs pooling) | ⚠️ **Unsuitable for retrieval** — negative discrimination |
 | MuRIL-SBERT (community) | `sbastola/muril-base-cased-sentence-transformer-snli` | ✅ | Untested; may inherit MuRIL's issues |
 | Sanskrit ALBERT | `surajp/albert-base-sanskrit` | ❌ (needs pooling) | — |
-| LaBSE | `sentence-transformers/LaBSE` | ✅ | **Recommended** — best overall |
-| E5-multilingual | `intfloat/multilingual-e5-large` | ✅ | Perfect Devanagari MRR, poor discrimination |
+| LaBSE | `sentence-transformers/LaBSE` | ✅ | Good discrimination (0.240) — reranking alternative |
+| E5-multilingual | `intfloat/multilingual-e5-large` | ✅ | **Best cross-lingual (0.820 MRR)** — coarse retrieval |
 | BGE-M3 | `BAAI/bge-m3` | ✅ | Best recall (1.0 R@3), mediocre MRR |
 | FastText Sanskrit | `cc.sa.300.bin` via `fasttext.util.download_model('sa')` | ❌ (word-level) | Domain-specific training |
 
 ---
 
-*Last updated: February 2025*
+*Last updated: February 2025 (VBT corpus benchmark added)*
 
-*This survey was prepared for practical application to Sanskrit manuscript retrieval systems. Section 5 contains original empirical benchmarks conducted on tantric/yogic Sanskrit texts, including evaluation of ByT5-Sanskrit preprocessing effects on retrieval quality. The benchmark code is available in this repository (`benchmark_embeddings.py` with `--byt5` flag for preprocessing experiments). Corrections and additions welcome.*
+*This survey was prepared for practical application to Sanskrit manuscript retrieval systems. Section 5 contains original empirical benchmarks conducted on tantric/yogic Sanskrit texts, including the VBT corpus (22 Vijñānabhairavatantra verses with English translations) for cross-lingual evaluation, and assessment of ByT5-Sanskrit preprocessing effects. The benchmark code is available in this repository (`benchmark_embeddings.py`). Corrections and additions welcome.*

@@ -391,32 +391,170 @@ VBT_RETRIEVAL_TEST_CASES = [
 
 # VBT Similarity pairs: semantically related verses
 VBT_SIMILARITY_PAIRS = [
-    # Same theme: śakti nature (VBT 1.3 and 1.18)
-    (VBT_CORPUS[2], VBT_CORPUS[19]),
-    # Same theme: negation of forms (VBT 1.11 and 1.12)
-    (VBT_CORPUS[12], VBT_CORPUS[13]),
-    # Same theme: void/space practices
-    (VBT_CORPUS[44], VBT_CORPUS[45]),
-    # Same theme: breath practices
-    (VBT_CORPUS[25], VBT_CORPUS[27]),
-    # Same theme: mind wandering
-    (VBT_CORPUS[118], VBT_CORPUS[131]),
-    # Cross-lingual: Sanskrit verse and its translation
-    (VBT_CORPUS[16], VBT_TRANSLATIONS[16]),  # VBT 1.15
-    (VBT_CORPUS[22], VBT_TRANSLATIONS[22]),  # VBT 1.21
-    (VBT_CORPUS[110], VBT_TRANSLATIONS[110]),  # VBT 1.108
-    (VBT_CORPUS[141], VBT_TRANSLATIONS[141]),  # VBT 1.139
+    # === THEMATIC PAIRS (Sanskrit-Sanskrit) ===
+
+    # Śakti nature
+    (VBT_CORPUS[2], VBT_CORPUS[19]),   # śakti forms (1.3 ↔ 1.18)
+    (VBT_CORPUS[19], VBT_CORPUS[20]),  # śakti and fire (1.18 ↔ 1.19)
+
+    # Negation of forms
+    (VBT_CORPUS[12], VBT_CORPUS[13]),  # not navātma, not triśira (1.11 ↔ 1.12)
+    (VBT_CORPUS[10], VBT_CORPUS[11]),  # māyā illusion (1.9 ↔ 1.10)
+
+    # Breath/prāṇa practices
+    (VBT_CORPUS[25], VBT_CORPUS[26]),  # prāṇa ascending (1.24 ↔ 1.25)
+    (VBT_CORPUS[25], VBT_CORPUS[27]),  # prāṇa and middle (1.24 ↔ 1.26)
+    (VBT_CORPUS[27], VBT_CORPUS[28]),  # breath retention (1.26 ↔ 1.27)
+    (VBT_CORPUS[65], VBT_CORPUS[68]),  # two breaths union (1.64 ↔ 1.67)
+
+    # Kuṇḍalinī/fire visualization
+    (VBT_CORPUS[29], VBT_CORPUS[30]),  # subtle fire rising (1.28 ↔ 1.29)
+    (VBT_CORPUS[30], VBT_CORPUS[31]),  # chakra progression (1.29 ↔ 1.30)
+    (VBT_CORPUS[31], VBT_CORPUS[32]),  # crown filling (1.30 ↔ 1.31)
+
+    # Void/space practices
+    (VBT_CORPUS[44], VBT_CORPUS[45]),  # body as space (1.43 ↔ 1.44)
+    (VBT_CORPUS[45], VBT_CORPUS[46]),  # back/root/heart void (1.44 ↔ 1.45)
+    (VBT_CORPUS[46], VBT_CORPUS[47]),  # void contemplation (1.45 ↔ 1.46)
+    (VBT_CORPUS[47], VBT_CORPUS[48]),  # body pervaded by space (1.46 ↔ 1.47)
+    (VBT_CORPUS[59], VBT_CORPUS[62]),  # universe as void (1.58 ↔ 1.61)
+
+    # Sound/nāda practices
+    (VBT_CORPUS[39], VBT_CORPUS[40]),  # anāhata and praṇava (1.38 ↔ 1.39)
+    (VBT_CORPUS[40], VBT_CORPUS[41]),  # sound and void (1.39 ↔ 1.40)
+    (VBT_CORPUS[41], VBT_CORPUS[42]),  # sound practices (1.40 ↔ 1.41)
+    (VBT_CORPUS[42], VBT_CORPUS[43]),  # mantra and sound (1.41 ↔ 1.42)
+    (VBT_CORPUS[91], VBT_CORPUS[92]),  # A-kāra and visarga (1.90 ↔ 1.91)
+
+    # Gaze/dṛṣṭi practices
+    (VBT_CORPUS[60], VBT_CORPUS[61]),  # gaze on pot/wall (1.59 ↔ 1.60)
+    (VBT_CORPUS[85], VBT_CORPUS[86]),  # gazing at clear sky (1.84 ↔ 1.85)
+    (VBT_CORPUS[88], VBT_CORPUS[89]),  # darkness practices (1.87 ↔ 1.88)
+    (VBT_CORPUS[77], VBT_CORPUS[85]),  # light/sky gazing (1.76 ↔ 1.84)
+
+    # Bliss/ānanda practices
+    (VBT_CORPUS[66], VBT_CORPUS[67]),  # world filled with bliss (1.65 ↔ 1.66)
+    (VBT_CORPUS[70], VBT_CORPUS[71]),  # śakti union bliss (1.69 ↔ 1.70)
+    (VBT_CORPUS[72], VBT_CORPUS[73]),  # joy of meeting/eating (1.71 ↔ 1.72)
+    (VBT_CORPUS[73], VBT_CORPUS[74]),  # eating/music bliss (1.72 ↔ 1.73)
+    (VBT_CORPUS[74], VBT_CORPUS[75]),  # contentment (1.73 ↔ 1.74)
+
+    # Mind practices
+    (VBT_CORPUS[95], VBT_CORPUS[96]),  # no inner action (1.94 ↔ 1.95)
+    (VBT_CORPUS[98], VBT_CORPUS[99]),  # desire/knowledge (1.97 ↔ 1.98)
+    (VBT_CORPUS[110], VBT_CORPUS[118]),  # unsupported mind (1.108 ↔ 1.116)
+    (VBT_CORPUS[118], VBT_CORPUS[131]),  # wherever mind wanders (1.116 ↔ 1.129)
+
+    # Dvādaśānta practices
+    (VBT_CORPUS[51], VBT_CORPUS[52]),  # twelve-finger space (1.50 ↔ 1.51)
+
+    # Middle/madhya practices
+    (VBT_CORPUS[62], VBT_CORPUS[63]),  # abide in middle (1.61 ↔ 1.62)
+    (VBT_CORPUS[104], VBT_CORPUS[128]),  # middle between pleasure/pain (1.103 ↔ 1.126)
+
+    # Non-dual realization
+    (VBT_CORPUS[101], VBT_CORPUS[102]),  # consciousness everywhere (1.100 ↔ 1.101)
+    (VBT_CORPUS[111], VBT_CORPUS[112]),  # I am Śiva / waves-water (1.109 ↔ 1.110)
+    (VBT_CORPUS[126], VBT_CORPUS[127]),  # equal in honor/dishonor (1.124 ↔ 1.125)
+    (VBT_CORPUS[127], VBT_CORPUS[128]),  # no attachment/aversion (1.125 ↔ 1.126)
+    (VBT_CORPUS[136], VBT_CORPUS[137]),  # no bondage/liberation (1.134 ↔ 1.135)
+
+    # Worship/ritual redefinition
+    (VBT_CORPUS[152], VBT_CORPUS[153]),  # true worship/pūjā (1.146 ↔ 1.147)
+    (VBT_CORPUS[154], VBT_CORPUS[155]),  # true sacrifice/homa (1.148 ↔ 1.149)
+    (VBT_CORPUS[156], VBT_CORPUS[157]),  # true bathing (1.150 ↔ 1.151)
+
+    # Final teachings
+    (VBT_CORPUS[141], VBT_CORPUS[142]),  # 112 dhāraṇās (1.139 ↔ 1.140)
+    (VBT_CORPUS[166], VBT_CORPUS[167]),  # Devī's satisfaction (1.164 ↔ 1.165)
+
+    # === CROSS-LINGUAL PAIRS (Sanskrit-English) ===
+    (VBT_CORPUS[16], VBT_TRANSLATIONS[16]),   # bliss free from vikalpa (1.15)
+    (VBT_CORPUS[22], VBT_TRANSLATIONS[22]),   # lamp/sun rays (1.21)
+    (VBT_CORPUS[25], VBT_TRANSLATIONS[25]),   # prāṇa ascending (1.24)
+    (VBT_CORPUS[39], VBT_TRANSLATIONS[39]),   # anāhata sound (1.38)
+    (VBT_CORPUS[44], VBT_TRANSLATIONS[44]),   # body as space (1.43)
+    (VBT_CORPUS[70], VBT_TRANSLATIONS[70]),   # śakti union (1.69)
+    (VBT_CORPUS[85], VBT_TRANSLATIONS[85]),   # gazing at sky (1.84)
+    (VBT_CORPUS[110], VBT_TRANSLATIONS[110]), # unsupported mind (1.108)
+    (VBT_CORPUS[111], VBT_TRANSLATIONS[111]), # I am Śiva (1.109)
+    (VBT_CORPUS[127], VBT_TRANSLATIONS[127]), # no attachment (1.125)
+    (VBT_CORPUS[141], VBT_TRANSLATIONS[141]), # 112 dhāraṇās (1.139)
+    (VBT_CORPUS[152], VBT_TRANSLATIONS[152]), # true worship (1.146)
 ]
 
 # VBT Dissimilarity pairs: unrelated verses
 VBT_DISSIMILARITY_PAIRS = [
-    # Devi's question vs breath practice
-    (VBT_CORPUS[1], VBT_CORPUS[25]),
-    # Grace request vs sound practice
-    (VBT_CORPUS[6], VBT_CORPUS[39]),
-    # Opening vs final verse
-    (VBT_CORPUS[0], VBT_CORPUS[167]),
-    # Completely unrelated: cooking vs tantra
-    ("cooking recipe ingredients kitchen", VBT_CORPUS[16]),
-    ("machine learning neural network", VBT_CORPUS[110]),
+    # === CROSS-THEMATIC PAIRS (different practice domains) ===
+
+    # Dialogue markers vs practices
+    (VBT_CORPUS[7], VBT_CORPUS[25]),   # "Bhairava said" vs prāṇa practice
+    (VBT_CORPUS[7], VBT_CORPUS[70]),   # "Bhairava said" vs sexual bliss
+    (VBT_CORPUS[144], VBT_CORPUS[85]), # "Devī said" vs sky gazing
+
+    # Opening questions vs specific practices
+    (VBT_CORPUS[1], VBT_CORPUS[25]),   # doubt about form vs breath
+    (VBT_CORPUS[1], VBT_CORPUS[70]),   # doubt vs sexual bliss
+    (VBT_CORPUS[6], VBT_CORPUS[39]),   # grace request vs sound
+    (VBT_CORPUS[24], VBT_CORPUS[152]), # how to know bhairava vs true worship
+
+    # Breath vs Sound (different sensory modalities)
+    (VBT_CORPUS[25], VBT_CORPUS[39]),  # prāṇa vs anāhata
+    (VBT_CORPUS[28], VBT_CORPUS[42]),  # kumbhaka vs musical instruments
+
+    # Breath vs Gaze
+    (VBT_CORPUS[25], VBT_CORPUS[85]),  # prāṇa vs sky gazing
+    (VBT_CORPUS[27], VBT_CORPUS[60]),  # breath middle vs pot gazing
+
+    # Sound vs Bliss
+    (VBT_CORPUS[39], VBT_CORPUS[70]),  # anāhata vs sexual union
+    (VBT_CORPUS[42], VBT_CORPUS[73]),  # instruments vs eating bliss
+
+    # Void/Space vs Bliss
+    (VBT_CORPUS[44], VBT_CORPUS[70]),  # body as space vs sexual bliss
+    (VBT_CORPUS[46], VBT_CORPUS[72]),  # triple void vs joy of meeting
+
+    # Kuṇḍalinī vs Non-dual philosophy
+    (VBT_CORPUS[29], VBT_CORPUS[127]), # subtle fire vs no attachment
+    (VBT_CORPUS[30], VBT_CORPUS[136]), # chakra rising vs no bondage
+
+    # Physical posture vs Mind practices
+    (VBT_CORPUS[79], VBT_CORPUS[98]),  # soft seat vs desire/knowledge
+    (VBT_CORPUS[80], VBT_CORPUS[110]), # armpit space vs unsupported mind
+
+    # Opening vs closing
+    (VBT_CORPUS[0], VBT_CORPUS[167]),  # śrutam deva vs devī embracing
+    (VBT_CORPUS[8], VBT_CORPUS[165]),  # sādhu sādhu vs supreme nectar
+
+    # Illusory world vs Concrete practice
+    (VBT_CORPUS[10], VBT_CORPUS[25]),  # māyā illusion vs breath
+    (VBT_CORPUS[134], VBT_CORPUS[70]), # world as illusion vs sexual bliss
+
+    # Worship redefinition vs Visualization
+    (VBT_CORPUS[152], VBT_CORPUS[29]), # true pūjā vs kuṇḍalinī fire
+    (VBT_CORPUS[154], VBT_CORPUS[33]), # true homa vs peacock feathers
+
+    # === COMPLETELY UNRELATED (non-tantric text) ===
+
+    # Modern technical text vs VBT verses
+    ("cooking recipe ingredients kitchen stove", VBT_CORPUS[16]),
+    ("machine learning neural network training", VBT_CORPUS[110]),
+    ("stock market investment portfolio returns", VBT_CORPUS[70]),
+    ("software engineering agile development sprint", VBT_CORPUS[25]),
+    ("climate change carbon emissions temperature", VBT_CORPUS[44]),
+
+    # Mundane activities vs practices
+    ("buying groceries at the supermarket today", VBT_CORPUS[39]),
+    ("driving car highway traffic commute work", VBT_CORPUS[85]),
+    ("watching television news weather forecast", VBT_CORPUS[127]),
+
+    # Other religious/philosophical traditions (still spiritual but different)
+    ("Jesus Christ resurrection salvation gospel", VBT_CORPUS[111]),
+    ("Buddha enlightenment nirvana four noble truths", VBT_CORPUS[16]),
+    ("Quran Allah prophet Muhammad prayer mosque", VBT_CORPUS[152]),
+
+    # Scientific text
+    ("quantum mechanics wave function probability", VBT_CORPUS[44]),
+    ("DNA genetics chromosome cell division", VBT_CORPUS[29]),
+    ("photosynthesis chlorophyll plant biology", VBT_CORPUS[66]),
 ]
