@@ -1,0 +1,346 @@
+# Sanskrit Text Embeddings for Semantic Search: A Practical Survey
+
+**Author's Note**: This survey synthesizes available information as of early 2025. The field of Indic NLP is evolving rapidly, and some claims—particularly from industry releases without peer-reviewed papers—should be treated with appropriate caution.
+
+---
+
+## 1. Introduction
+
+Building semantic search over Sanskrit texts presents unique challenges absent in modern language NLP:
+
+- **Sandhi**: Phonological fusion at word boundaries obscures token boundaries
+- **Compounding**: Extensive nominal composition (समास) creates novel lexical units
+- **Morphological richness**: Eight cases, three numbers, complex verbal system
+- **Script variation**: Texts exist in Devanagari, IAST romanization, and regional scripts
+- **Limited training data**: Sanskrit web presence is minuscule relative to corpus requirements for modern LLMs
+
+This survey examines available embedding approaches for Sanskrit semantic search, with particular attention to sentence-level retrieval suitable for systems like pgvector.
+
+---
+
+## 2. Tokenization: The Upstream Problem
+
+Before embeddings, tokenization determines how text is segmented. Standard BPE tokenizers (tiktoken, SentencePiece trained on English) perform poorly on Sanskrit:
+
+| Input | tiktoken (cl100k) | Tokens | Chars/Token |
+|-------|-------------------|--------|-------------|
+| "prāṇa" (IAST) | ["pr", "ā", "ṇ", "a"] | ~4 | ~1.5 |
+| "प्राण" (Devanagari) | ["प्रा", "ण"] | ~2-3 | ~2 |
+| "breath" (English) | ["breath"] | 1 | 6 |
+
+**Implications**:
+- API costs scale with token count
+- Semantic coherence degrades when morphemes fragment
+- Cross-lingual alignment suffers
+
+**Recommendations**:
+- For OpenAI/Anthropic APIs: Prefer Devanagari over IAST (marginally better tokenization)
+- For local models: Use Indic-specific tokenizers (Krutrim, IndicBERT)
+- Consider byte-level models (ByT5) that sidestep tokenization entirely
+
+---
+
+## 3. Embedding Models: A Taxonomy
+
+### 3.1 Sanskrit-Specific Models
+
+| Model | Architecture | Training Data | Sentence-Native | Paper | Notes |
+|-------|--------------|---------------|-----------------|-------|-------|
+| **ByT5-Sanskrit** | Byte-level T5 | Sanskrit corpora | ❌ (task-specific) | EMNLP 2024 | SOTA for segmentation, parsing, OCR correction |
+| **albert-base-sanskrit** | ALBERT | Sanskrit Wikipedia | ❌ (needs pooling) | ❌ | Devanagari only; small training corpus |
+| **FastText Sanskrit** | Skip-gram + char n-grams | CommonCrawl | ❌ (word-level) | ✅ (Facebook) | Good OOV handling; domain mismatch for classical texts |
+
+**ByT5-Sanskrit** (Nehrdich, Hellwig, Keutzer — EMNLP 2024 Findings) represents current SOTA for Sanskrit NLP tasks. Its byte-level architecture elegantly handles sandhi and script variation. However, it is optimized for morphological analysis rather than sentence similarity.
+
+*Gap*: No dedicated Sanskrit sentence-transformer exists. This is a genuine lacuna in the literature.
+
+### 3.2 Multilingual Models with Sanskrit Support
+
+| Model | Sanskrit Coverage | Sentence-Native | Params | Paper | Provenance |
+|-------|-------------------|-----------------|--------|-------|------------|
+| **MuRIL** | ✅ Explicit (17 langs) | ❌ (needs pooling) | 236M | arXiv:2103.10730 | Google Research India |
+| **Vyakyarth** | ✅ Explicit (10 Indic) | ✅ Native | 278M | ❌ (under review) | Krutrim AI (Ola) |
+| **IndicBERT** | ❌ (12 langs, no Sanskrit) | ❌ | 18M | ✅ | AI4Bharat |
+| **LaBSE** | ✅ (109 langs incl. Indic) | ✅ Native | 470M | ✅ (Google) | Google |
+| **LASER3** | ✅ (200 langs, 27 Indic) | ✅ Native | — | ✅ (Meta) | Meta AI |
+
+**MuRIL** remains the academically defensible choice with peer-reviewed methodology. For sentence embeddings, use `pooled_output` (CLS token) or mean pooling, though neither is optimized for retrieval. Community fine-tunes exist (`sbastola/muril-base-cased-sentence-transformer-snli`, `pushpdeep/sbert-en_hi-muril`) but lack Sanskrit-specific evaluation.
+
+**Vyakyarth** claims superior performance on Indic retrieval benchmarks (97.8 avg on FLORES vs. Jina-v3's 96.0 per BharatBench). Built on XLM-R-Multilingual with contrastive fine-tuning. However:
+- No peer-reviewed paper (cited as "under review")
+- Benchmarked on modern Indic, not classical Sanskrit
+- Krutrim Community License (not MIT/Apache)
+
+*Recommendation*: For academic work requiring citation, use MuRIL + mean pooling. For production systems prioritizing quality, benchmark Vyakyarth against your specific corpus.
+
+### 3.3 General Multilingual Models
+
+| Model | Sanskrit Support | Sentence-Native | Dim | Notes |
+|-------|------------------|-----------------|-----|-------|
+| **intfloat/multilingual-e5-large** | Implicit (IAST exposure) | ✅ | 1024 | Strong general multilingual; handles IAST reasonably |
+| **OpenAI text-embedding-3-large** | Implicit | ✅ | 3072 | 54.9% on MIRACL multilingual; expensive |
+| **sentence-transformers/LaBSE** | ✅ Indic coverage | ✅ | 768 | Good cross-lingual retrieval baseline |
+| **paraphrase-multilingual-MiniLM-L12-v2** | Limited | ✅ | 384 | Fast but weak on Indic |
+
+For IAST-romanized texts, **multilingual-e5-large** often performs surprisingly well due to exposure to Indological literature in training data. Worth benchmarking before committing to Indic-specific models.
+
+---
+
+## 4. The FastText Alternative
+
+A 2022 LREC paper on Buddhist Sanskrit embeddings (Lugli et al.) found that **fastText outperformed BERT for semantic similarity**, while BERT excelled at word analogy tasks. This counterintuitive result deserves attention.
+
+**Why FastText works for Sanskrit**:
+1. Character n-gram subwords capture morphological regularity
+2. No tokenization preprocessing required (handles OOV gracefully)
+3. Efficient training on domain-specific corpora
+4. Particularly effective for rare forms and OCR errors
+
+**Practical setup**:
+```python
+import fasttext
+import numpy as np
+
+# Pre-trained CommonCrawl Sanskrit
+ft = fasttext.load_model('cc.sa.300.bin')
+
+def sentence_embedding(text, model):
+    words = text.split()  # Requires pre-segmented input
+    vectors = [model.get_word_vector(w) for w in words]
+    return np.mean(vectors, axis=0)
+```
+
+**Caveats**:
+- Pre-trained vectors trained on modern web Sanskrit (Wikipedia, religious sites)
+- Domain mismatch for classical/tantric texts
+- Requires sandhi resolution before embedding (→ use ByT5-Sanskrit as preprocessor)
+
+*Recommendation for specialized corpora*: Train custom fastText on domain texts (DCS, GRETIL śaiva corpus) rather than using CommonCrawl vectors:
+
+```bash
+./fasttext skipgram -input your_sanskrit_corpus.txt -output sanskrit_custom -dim 300 -minCount 2
+```
+
+---
+
+## 5. Comparative Summary
+
+| Use Case | Recommended Model | Rationale |
+|----------|-------------------|-----------|
+| **Academic publication** | MuRIL + mean pooling | Peer-reviewed; citable |
+| **Production retrieval (Indic)** | Vyakyarth | Best reported Indic benchmark scores |
+| **Cross-lingual (Sanskrit ↔ English)** | LaBSE | Designed for cross-lingual retrieval |
+| **IAST romanized texts** | multilingual-e5-large | Strong IAST handling |
+| **Morphological preprocessing** | ByT5-Sanskrit | SOTA segmentation/lemmatization |
+| **Domain-specific similarity** | Custom fastText | Trainable on small corpora |
+| **Budget-constrained** | LaBSE or MiniLM | Smaller models, reasonable quality |
+
+---
+
+## 6. Recommended Architecture for Sanskrit Semantic Search
+
+For a pgvector-based retrieval system over texts like the Vijñānabhairava:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     INDEXING PIPELINE                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Raw Sanskrit (IAST/Devanagari)                             │
+│        │                                                     │
+│        ▼                                                     │
+│  ByT5-Sanskrit (segmentation, lemmatization)                │
+│        │                                                     │
+│        ▼                                                     │
+│  Embedding Model (Vyakyarth / MuRIL / E5)                   │
+│        │                                                     │
+│        ▼                                                     │
+│  pgvector (HNSW index, cosine distance)                     │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                     QUERY PIPELINE                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  User Query (English or Sanskrit)                           │
+│        │                                                     │
+│        ▼                                                     │
+│  Query Expansion (LLM: technical terms, synonyms)           │
+│  e.g., "breath practice" → prāṇa, kumbhaka, dhāraṇā        │
+│        │                                                     │
+│        ▼                                                     │
+│  Embed expanded query                                        │
+│        │                                                     │
+│        ├──────────────┐                                      │
+│        ▼              ▼                                      │
+│  Dense retrieval   Sparse retrieval (BM25)                  │
+│  (pgvector)        (technical vocabulary)                   │
+│        │              │                                      │
+│        └──────┬───────┘                                      │
+│               ▼                                              │
+│  Reciprocal Rank Fusion                                     │
+│               │                                              │
+│               ▼                                              │
+│  Top-k results → LLM reranking (optional)                   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Rationale for hybrid retrieval**: Dense embeddings capture conceptual similarity but struggle with technical vocabulary (dvādaśānta, kumbhaka, bhairava). Sparse retrieval handles exact terminology. Fusion combines strengths.
+
+---
+
+## 7. Open Questions and Research Gaps
+
+1. **No Sanskrit sentence-transformer**: The field lacks a model specifically trained for Sanskrit sentence similarity with proper evaluation. Fine-tuning MuRIL or XLM-R on Sanskrit paraphrase/NLI data would be valuable.
+
+2. **Benchmark datasets**: No standard Sanskrit semantic similarity benchmark exists. Creating one from parallel translations (e.g., Vijñānabhairava commentarial tradition) would enable rigorous model comparison.
+
+3. **Script normalization**: Systematic study of embedding quality across Devanagari, IAST, and regional scripts (Śāradā, Grantha, etc.) is lacking.
+
+4. **Classical vs. modern Sanskrit**: Pre-trained models favor modern Sanskrit (Wikipedia). Performance on classical philosophical/tantric vocabulary is underexplored.
+
+5. **Evaluation on retrieval tasks**: Most Indic benchmarks focus on classification/NLI. Retrieval-specific evaluation (e.g., finding parallel passages across manuscripts) needs development.
+
+6. **Sandhi-aware embeddings**: Current approaches require pre-segmentation. End-to-end models that handle unsegmented Sanskrit would be valuable.
+
+---
+
+## 8. Practical Recommendations
+
+### For immediate deployment:
+1. Start with `intfloat/multilingual-e5-large` for IAST or `krutrim-ai-labs/Vyakyarth` for Devanagari
+2. Implement hybrid dense+sparse retrieval
+3. Use LLM-based query expansion for English→Sanskrit bridging
+
+### For academic rigor:
+1. Use MuRIL with explicit methodology citation
+2. Report preprocessing steps (sandhi resolution, lemmatization)
+3. Create and release evaluation dataset for reproducibility
+
+### For best quality (with effort):
+1. Preprocess with ByT5-Sanskrit for segmentation
+2. Fine-tune Vyakyarth or MuRIL on domain-specific pairs
+3. Train custom fastText on your corpus as sparse component
+4. Benchmark systematically before deployment
+
+---
+
+## 9. Model Quick Reference
+
+### 9.1 Direct Sentence Embedding (no pooling required)
+
+```python
+from sentence_transformers import SentenceTransformer
+
+# Option 1: Indic-optimized (if provenance acceptable)
+model = SentenceTransformer("krutrim-ai-labs/Vyakyarth")
+
+# Option 2: Cross-lingual with paper
+model = SentenceTransformer("sentence-transformers/LaBSE")
+
+# Option 3: Strong multilingual baseline
+model = SentenceTransformer("intfloat/multilingual-e5-large")
+
+embeddings = model.encode(["ūrdhve prāṇo hy adho jīvo"])
+```
+
+### 9.2 MuRIL with Manual Pooling
+
+```python
+from transformers import AutoTokenizer, AutoModel
+import torch
+
+tokenizer = AutoTokenizer.from_pretrained("google/muril-base-cased")
+model = AutoModel.from_pretrained("google/muril-base-cased")
+
+def mean_pooling(model_output, attention_mask):
+    token_embeddings = model_output[0]
+    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
+text = "ऊर्ध्वे प्राणो ह्यधो जीवो"  # Devanagari preferred for MuRIL
+encoded = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+with torch.no_grad():
+    output = model(**encoded)
+embedding = mean_pooling(output, encoded["attention_mask"])
+```
+
+### 9.3 FastText for Domain-Specific Search
+
+```python
+import fasttext
+import fasttext.util
+import numpy as np
+
+# Download pre-trained (modern Sanskrit, ~1.2GB)
+fasttext.util.download_model('sa', if_exists='ignore')
+ft = fasttext.load_model('cc.sa.300.bin')
+
+# Or train custom on your corpus:
+# ft = fasttext.train_unsupervised('your_corpus.txt', model='skipgram', dim=300)
+
+def sentence_vec(text, model):
+    words = text.split()  # Assumes pre-segmented
+    vecs = [model.get_word_vector(w) for w in words if w]
+    return np.mean(vecs, axis=0) if vecs else np.zeros(model.get_dimension())
+```
+
+### 9.4 Preprocessing Pipeline with ByT5-Sanskrit
+
+```python
+# For segmentation before embedding
+# See: https://github.com/sebastian-nehrdich/byt5-sanskrit-analyzers
+
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+
+tokenizer = AutoTokenizer.from_pretrained("sebastian-nehrdich/byt5-sanskrit-analyzers")
+model = AutoModelForSeq2SeqLM.from_pretrained("sebastian-nehrdich/byt5-sanskrit-analyzers")
+
+def segment_sanskrit(text):
+    inputs = tokenizer(f"segment: {text}", return_tensors="pt")
+    outputs = model.generate(**inputs, max_length=512)
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+# Then embed the segmented output
+segmented = segment_sanskrit("ūrdhveprāṇohyadhojīvo")
+embedding = your_embedding_model.encode(segmented)
+```
+
+---
+
+## 10. References
+
+### Peer-Reviewed
+
+- Khanuja et al. (2021). "MuRIL: Multilingual Representations for Indian Languages." arXiv:2103.10730
+- Nehrdich, Hellwig, Keutzer (2024). "One Model is All You Need: ByT5-Sanskrit, a Unified Model for Sanskrit NLP Tasks." EMNLP 2024 Findings. [ACL Anthology](https://aclanthology.org/2024.findings-emnlp.805/)
+- Lugli et al. (2022). "Embeddings Models for Buddhist Sanskrit." LREC 2022.
+- Feng et al. (2022). "Language-agnostic BERT Sentence Embedding (LaBSE)." ACL 2022.
+- Bojanowski et al. (2017). "Enriching Word Vectors with Subword Information." TACL. (FastText)
+
+### Technical Reports / Preprints
+
+- Krutrim Team (2024). "Krutrim LLM: A Novel Tokenization Strategy for Multilingual Indic Languages." arXiv:2407.12481
+- Krutrim Team (2025). "Krutrim LLM: Multilingual Foundational Model." arXiv:2502.09642
+- AI4Bharat IndicNLP Catalog: https://ai4bharat.github.io/indicnlp_catalog/
+
+### Model Repositories
+
+| Model | HuggingFace ID | Sentence-Native |
+|-------|----------------|-----------------|
+| ByT5-Sanskrit | `sebastian-nehrdich/byt5-sanskrit-analyzers` | ❌ (task model) |
+| Vyakyarth | `krutrim-ai-labs/Vyakyarth` | ✅ |
+| MuRIL | `google/muril-base-cased` | ❌ (needs pooling) |
+| MuRIL-SBERT (community) | `sbastola/muril-base-cased-sentence-transformer-snli` | ✅ |
+| Sanskrit ALBERT | `surajp/albert-base-sanskrit` | ❌ (needs pooling) |
+| LaBSE | `sentence-transformers/LaBSE` | ✅ |
+| E5-multilingual | `intfloat/multilingual-e5-large` | ✅ |
+| FastText Sanskrit | `cc.sa.300.bin` via `fasttext.util.download_model('sa')` | ❌ (word-level) |
+
+---
+
+*Last updated: February 2025*
+
+*This survey was prepared for practical application to Sanskrit manuscript retrieval systems. Corrections and additions welcome.*
