@@ -12,6 +12,10 @@ Metrics:
 - Retrieval accuracy (MRR, Recall@k)
 - Cross-lingual retrieval (English → Sanskrit)
 - Script comparison (IAST vs Devanagari via transliteration)
+
+Optional preprocessing with ByT5-Sanskrit:
+- Word segmentation (sandhi splitting)
+- Lemmatization
 """
 
 import time
@@ -21,6 +25,18 @@ from typing import Optional
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from aksharamukha import transliterate
+import torch
+
+# ByT5-Sanskrit imports (optional - for segmentation/lemmatization)
+try:
+    from transformers import T5ForConditionalGeneration, AutoTokenizer
+    BYT5_AVAILABLE = True
+except ImportError:
+    BYT5_AVAILABLE = False
+
+# GPU support
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {DEVICE}")
 
 
 # =============================================================================
@@ -141,8 +157,107 @@ class BenchmarkResult:
     retrieval_recall_at_3_devanagari: float = 0.0
     transliteration_consistency: float = 0.0  # IAST embedding vs transliterated Devanagari embedding
     # Devanagari similarity discrimination
-    similarity_scores_devanagari: dict = None
-    dissimilarity_scores_devanagari: dict = None
+    similarity_scores_devanagari: dict = field(default_factory=dict)
+    dissimilarity_scores_devanagari: dict = field(default_factory=dict)
+    # ByT5-Sanskrit preprocessing results
+    retrieval_mrr_segmented: float = 0.0
+    retrieval_mrr_lemmatized: float = 0.0
+    retrieval_mrr_seg_lemma: float = 0.0  # segmented + lemmatized
+    similarity_scores_segmented: dict = field(default_factory=dict)
+    dissimilarity_scores_segmented: dict = field(default_factory=dict)
+    similarity_scores_lemmatized: dict = field(default_factory=dict)
+    dissimilarity_scores_lemmatized: dict = field(default_factory=dict)
+
+
+# =============================================================================
+# ByT5-Sanskrit Preprocessing (Segmentation & Lemmatization)
+# =============================================================================
+
+class ByT5SanskritPreprocessor:
+    """
+    ByT5-Sanskrit for Sanskrit text preprocessing.
+
+    Uses task prefixes:
+    - "S" = Word Segmentation (sandhi splitting)
+    - "L" = Lemmatization
+    - "M" = Morphosyntactic tagging
+
+    Reference: Nehrdich et al. 2024, "One Model is All You Need: ByT5-Sanskrit"
+    """
+
+    def __init__(self, model_id: str = "chronbmm/sanskrit5-multitask", device: str = None):
+        if not BYT5_AVAILABLE:
+            raise ImportError("transformers library required for ByT5-Sanskrit")
+
+        self.device = device or DEVICE
+        print(f"Loading ByT5-Sanskrit: {model_id} on {self.device}")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        self.model = T5ForConditionalGeneration.from_pretrained(model_id)
+        self.model.to(self.device)
+        self.model.eval()
+        self.model_id = model_id
+
+    def _process(self, text: str, task_prefix: str, max_length: int = 512) -> str:
+        """Process text with specified task prefix."""
+        input_text = f"{task_prefix}{text}"
+        inputs = self.tokenizer(input_text, return_tensors="pt", max_length=max_length, truncation=True)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_length=max_length,
+                num_beams=4,
+                early_stopping=True
+            )
+
+        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    def segment(self, text: str) -> str:
+        """Segment Sanskrit text (sandhi splitting)."""
+        return self._process(text, "S")
+
+    def lemmatize(self, text: str) -> str:
+        """Lemmatize Sanskrit text."""
+        return self._process(text, "L")
+
+    def segment_and_lemmatize(self, text: str) -> str:
+        """Segment then lemmatize Sanskrit text."""
+        segmented = self.segment(text)
+        return self.lemmatize(segmented)
+
+
+def preprocess_corpus_with_byt5(
+    corpus: list[str],
+    preprocessor: ByT5SanskritPreprocessor,
+    mode: str = "segment"  # "segment", "lemmatize", or "both"
+) -> list[str]:
+    """
+    Preprocess corpus using ByT5-Sanskrit.
+
+    Args:
+        corpus: List of Sanskrit texts
+        preprocessor: ByT5SanskritPreprocessor instance
+        mode: "segment" for sandhi splitting, "lemmatize" for lemmatization,
+              "both" for segmentation followed by lemmatization
+    """
+    result = []
+    for text in corpus:
+        # Skip non-Sanskrit text (e.g., English queries)
+        if not any(c in text for c in "āīūṛṝḷḹēōṃḥṅñṭḍṇśṣऀ-ॿ"):
+            result.append(text)
+            continue
+
+        if mode == "segment":
+            processed = preprocessor.segment(text)
+        elif mode == "lemmatize":
+            processed = preprocessor.lemmatize(text)
+        elif mode == "both":
+            processed = preprocessor.segment_and_lemmatize(text)
+        else:
+            processed = text
+        result.append(processed)
+    return result
 
 
 # =============================================================================
@@ -176,9 +291,9 @@ def transliterate_queries(test_cases: list[tuple[str, list[int]]]) -> list[tuple
 
 
 def load_model(config: ModelConfig) -> tuple[SentenceTransformer, float]:
-    """Load model and return (model, load_time_seconds)."""
+    """Load model and return (model, load_time_seconds). Uses GPU if available."""
     start = time.time()
-    model = SentenceTransformer(config.model_id)
+    model = SentenceTransformer(config.model_id, device=DEVICE)
     load_time = time.time() - start
     return model, load_time
 
@@ -249,7 +364,10 @@ def evaluate_retrieval(
     return np.mean(mrr_scores), np.mean(recall_at_1), np.mean(recall_at_3)
 
 
-def run_benchmark(config: ModelConfig) -> BenchmarkResult:
+def run_benchmark(
+    config: ModelConfig,
+    byt5_preprocessor: Optional[ByT5SanskritPreprocessor] = None
+) -> BenchmarkResult:
     """Run full benchmark for a single model."""
     print(f"\n{'='*60}")
     print(f"Benchmarking: {config.name}")
@@ -337,6 +455,117 @@ def run_benchmark(config: ModelConfig) -> BenchmarkResult:
         dissimilarity_scores_deva[(text1[:30], text2[:30])] = score
         print(f"  {text1[:25]}... <-> {text2[:15]}...: {score:.3f}")
 
+    # ByT5-Sanskrit preprocessing benchmarks
+    mrr_segmented = 0.0
+    mrr_lemmatized = 0.0
+    mrr_seg_lemma = 0.0
+    sim_scores_seg = {}
+    dissim_scores_seg = {}
+    sim_scores_lemma = {}
+    dissim_scores_lemma = {}
+
+    if byt5_preprocessor is not None:
+        print("\n" + "-" * 60)
+        print("ByT5-Sanskrit Preprocessing Benchmarks")
+        print("-" * 60)
+
+        # Preprocess corpus with segmentation
+        print("Preprocessing corpus with ByT5 segmentation...")
+        corpus_segmented = preprocess_corpus_with_byt5(
+            SANSKRIT_CORPUS, byt5_preprocessor, mode="segment"
+        )
+        print("  Sample segmented:")
+        for orig, seg in zip(SANSKRIT_CORPUS[:2], corpus_segmented[:2]):
+            print(f"    {orig[:40]}...")
+            print(f"    → {seg[:40]}...")
+
+        # Preprocess queries with segmentation
+        queries_segmented = [
+            (preprocess_corpus_with_byt5([q], byt5_preprocessor, mode="segment")[0], indices)
+            for q, indices in RETRIEVAL_TEST_CASES
+        ]
+
+        # Retrieval with segmented corpus
+        print("Evaluating retrieval (segmented corpus)...")
+        mrr_segmented, _, _ = evaluate_retrieval(
+            model, corpus_segmented, queries_segmented, config.prefix
+        )
+        print(f"  MRR (segmented): {mrr_segmented:.3f}")
+
+        # Preprocess corpus with lemmatization
+        print("Preprocessing corpus with ByT5 lemmatization...")
+        corpus_lemmatized = preprocess_corpus_with_byt5(
+            SANSKRIT_CORPUS, byt5_preprocessor, mode="lemmatize"
+        )
+        print("  Sample lemmatized:")
+        for orig, lemma in zip(SANSKRIT_CORPUS[:2], corpus_lemmatized[:2]):
+            print(f"    {orig[:40]}...")
+            print(f"    → {lemma[:40]}...")
+
+        # Preprocess queries with lemmatization
+        queries_lemmatized = [
+            (preprocess_corpus_with_byt5([q], byt5_preprocessor, mode="lemmatize")[0], indices)
+            for q, indices in RETRIEVAL_TEST_CASES
+        ]
+
+        # Retrieval with lemmatized corpus
+        print("Evaluating retrieval (lemmatized corpus)...")
+        mrr_lemmatized, _, _ = evaluate_retrieval(
+            model, corpus_lemmatized, queries_lemmatized, config.prefix
+        )
+        print(f"  MRR (lemmatized): {mrr_lemmatized:.3f}")
+
+        # Preprocess corpus with both segmentation and lemmatization
+        print("Preprocessing corpus with ByT5 segmentation + lemmatization...")
+        corpus_seg_lemma = preprocess_corpus_with_byt5(
+            SANSKRIT_CORPUS, byt5_preprocessor, mode="both"
+        )
+
+        queries_seg_lemma = [
+            (preprocess_corpus_with_byt5([q], byt5_preprocessor, mode="both")[0], indices)
+            for q, indices in RETRIEVAL_TEST_CASES
+        ]
+
+        print("Evaluating retrieval (segmented + lemmatized corpus)...")
+        mrr_seg_lemma, _, _ = evaluate_retrieval(
+            model, corpus_seg_lemma, queries_seg_lemma, config.prefix
+        )
+        print(f"  MRR (seg+lemma): {mrr_seg_lemma:.3f}")
+
+        # Similarity discrimination with segmented text
+        print("Computing similarity scores (segmented)...")
+        for text1, text2 in SIMILARITY_PAIRS[:3]:  # Use first 3 pairs
+            t1_seg = preprocess_corpus_with_byt5([text1], byt5_preprocessor, mode="segment")[0]
+            t2_seg = preprocess_corpus_with_byt5([text2], byt5_preprocessor, mode="segment")[0]
+            score = compute_similarity(model, t1_seg, t2_seg, config.prefix)
+            sim_scores_seg[(text1[:30], text2[:30])] = score
+            print(f"  {text1[:20]}... <-> {text2[:20]}...: {score:.3f}")
+
+        print("Computing dissimilarity scores (segmented)...")
+        for text1, text2 in DISSIMILARITY_PAIRS:
+            t1_seg = preprocess_corpus_with_byt5([text1], byt5_preprocessor, mode="segment")[0]
+            t2_seg = preprocess_corpus_with_byt5([text2], byt5_preprocessor, mode="segment")[0]
+            score = compute_similarity(model, t1_seg, t2_seg, config.prefix)
+            dissim_scores_seg[(text1[:30], text2[:30])] = score
+            print(f"  {text1[:20]}... <-> {text2[:20]}...: {score:.3f}")
+
+        # Similarity discrimination with lemmatized text
+        print("Computing similarity scores (lemmatized)...")
+        for text1, text2 in SIMILARITY_PAIRS[:3]:
+            t1_lemma = preprocess_corpus_with_byt5([text1], byt5_preprocessor, mode="lemmatize")[0]
+            t2_lemma = preprocess_corpus_with_byt5([text2], byt5_preprocessor, mode="lemmatize")[0]
+            score = compute_similarity(model, t1_lemma, t2_lemma, config.prefix)
+            sim_scores_lemma[(text1[:30], text2[:30])] = score
+            print(f"  {text1[:20]}... <-> {text2[:20]}...: {score:.3f}")
+
+        print("Computing dissimilarity scores (lemmatized)...")
+        for text1, text2 in DISSIMILARITY_PAIRS:
+            t1_lemma = preprocess_corpus_with_byt5([text1], byt5_preprocessor, mode="lemmatize")[0]
+            t2_lemma = preprocess_corpus_with_byt5([text2], byt5_preprocessor, mode="lemmatize")[0]
+            score = compute_similarity(model, t1_lemma, t2_lemma, config.prefix)
+            dissim_scores_lemma[(text1[:30], text2[:30])] = score
+            print(f"  {text1[:20]}... <-> {text2[:20]}...: {score:.3f}")
+
     return BenchmarkResult(
         model_name=config.name,
         embedding_dim=model.get_sentence_embedding_dimension(),
@@ -344,16 +573,23 @@ def run_benchmark(config: ModelConfig) -> BenchmarkResult:
         avg_encode_time_ms=avg_encode_time,
         similarity_scores=similarity_scores,
         dissimilarity_scores=dissimilarity_scores,
-        retrieval_mrr=mrr,
-        retrieval_recall_at_1=r1,
-        retrieval_recall_at_3=r3,
-        cross_script_similarity=cross_script_avg,
-        retrieval_mrr_devanagari=mrr_deva,
-        retrieval_recall_at_1_devanagari=r1_deva,
-        retrieval_recall_at_3_devanagari=r3_deva,
+        retrieval_mrr=float(mrr),
+        retrieval_recall_at_1=float(r1),
+        retrieval_recall_at_3=float(r3),
+        cross_script_similarity=float(cross_script_avg),
+        retrieval_mrr_devanagari=float(mrr_deva),
+        retrieval_recall_at_1_devanagari=float(r1_deva),
+        retrieval_recall_at_3_devanagari=float(r3_deva),
         transliteration_consistency=transliteration_consistency,
         similarity_scores_devanagari=similarity_scores_deva,
         dissimilarity_scores_devanagari=dissimilarity_scores_deva,
+        retrieval_mrr_segmented=float(mrr_segmented),
+        retrieval_mrr_lemmatized=float(mrr_lemmatized),
+        retrieval_mrr_seg_lemma=float(mrr_seg_lemma),
+        similarity_scores_segmented=sim_scores_seg,
+        dissimilarity_scores_segmented=dissim_scores_seg,
+        similarity_scores_lemmatized=sim_scores_lemma,
+        dissimilarity_scores_lemmatized=dissim_scores_lemma,
     )
 
 
@@ -472,22 +708,96 @@ def print_comparison_table(results: list[BenchmarkResult]):
             print(f"  {r.model_name}: sim_avg={sim_avg:.3f}, dissim_avg={dissim_avg:.3f}, "
                   f"discrimination={discrimination:.3f}")
 
+    # ByT5-Sanskrit preprocessing results
+    has_byt5_results = any(r.retrieval_mrr_segmented > 0 for r in results)
+    if has_byt5_results:
+        print("\n" + "-" * 80)
+        print("ByT5-SANSKRIT PREPROCESSING (segmentation & lemmatization)")
+        print("-" * 80)
+
+        print(f"{'MRR (Raw IAST)':<30} ", end="")
+        for r in results:
+            print(f"{r.retrieval_mrr:<18.3f} ", end="")
+        print()
+
+        print(f"{'MRR (Segmented)':<30} ", end="")
+        for r in results:
+            print(f"{r.retrieval_mrr_segmented:<18.3f} ", end="")
+        print()
+
+        print(f"{'MRR (Lemmatized)':<30} ", end="")
+        for r in results:
+            print(f"{r.retrieval_mrr_lemmatized:<18.3f} ", end="")
+        print()
+
+        print(f"{'MRR (Seg+Lemma)':<30} ", end="")
+        for r in results:
+            print(f"{r.retrieval_mrr_seg_lemma:<18.3f} ", end="")
+        print()
+
+        # MRR Delta from preprocessing
+        print("\n  MRR Delta from preprocessing (positive = improvement):")
+        for r in results:
+            seg_delta = r.retrieval_mrr_segmented - r.retrieval_mrr
+            lemma_delta = r.retrieval_mrr_lemmatized - r.retrieval_mrr
+            both_delta = r.retrieval_mrr_seg_lemma - r.retrieval_mrr
+            print(f"  {r.model_name}: seg={seg_delta:+.3f}, lemma={lemma_delta:+.3f}, both={both_delta:+.3f}")
+
+        # Similarity discrimination with preprocessing
+        print("\n  Similarity Discrimination - SEGMENTED (higher = better):")
+        for r in results:
+            if r.similarity_scores_segmented and r.dissimilarity_scores_segmented:
+                sim_avg = np.mean(list(r.similarity_scores_segmented.values()))
+                dissim_avg = np.mean(list(r.dissimilarity_scores_segmented.values()))
+                discrimination = sim_avg - dissim_avg
+                print(f"    {r.model_name}: sim={sim_avg:.3f}, dissim={dissim_avg:.3f}, disc={discrimination:.3f}")
+
+        print("\n  Similarity Discrimination - LEMMATIZED (higher = better):")
+        for r in results:
+            if r.similarity_scores_lemmatized and r.dissimilarity_scores_lemmatized:
+                sim_avg = np.mean(list(r.similarity_scores_lemmatized.values()))
+                dissim_avg = np.mean(list(r.dissimilarity_scores_lemmatized.values()))
+                discrimination = sim_avg - dissim_avg
+                print(f"    {r.model_name}: sim={sim_avg:.3f}, dissim={dissim_avg:.3f}, disc={discrimination:.3f}")
+
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Sanskrit Embedding Models Benchmark")
+    parser.add_argument("--byt5", action="store_true",
+                        help="Enable ByT5-Sanskrit preprocessing (segmentation/lemmatization)")
+    parser.add_argument("--byt5-model", type=str, default="chronbmm/sanskrit5-multitask",
+                        help="ByT5-Sanskrit model ID (default: chronbmm/sanskrit5-multitask)")
+    args = parser.parse_args()
+
     print("Sanskrit Embedding Models Benchmark")
     print("=" * 60)
+    print(f"Device: {DEVICE}")
     print(f"Corpus size: {len(SANSKRIT_CORPUS)} sentences")
     print(f"Retrieval test cases: {len(RETRIEVAL_TEST_CASES)}")
     print(f"Similarity pairs: {len(SIMILARITY_PAIRS)}")
     print(f"Dissimilarity pairs: {len(DISSIMILARITY_PAIRS)}")
 
+    # Load ByT5-Sanskrit preprocessor if requested
+    byt5_preprocessor = None
+    if args.byt5:
+        if BYT5_AVAILABLE:
+            print(f"\nLoading ByT5-Sanskrit preprocessor: {args.byt5_model}")
+            byt5_preprocessor = ByT5SanskritPreprocessor(model_id=args.byt5_model)
+            print("ByT5-Sanskrit loaded successfully.")
+        else:
+            print("\nWarning: ByT5-Sanskrit requested but transformers not available.")
+            print("Install with: pip install transformers")
+
     results = []
     for config in MODELS:
         try:
-            result = run_benchmark(config)
+            result = run_benchmark(config, byt5_preprocessor=byt5_preprocessor)
             results.append(result)
         except Exception as e:
             print(f"\nError benchmarking {config.name}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
 
     if results:
