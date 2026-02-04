@@ -141,97 +141,13 @@ DISSIMILARITY_PAIRS_DEVANAGARI = [
 # =============================================================================
 # Vijñānabhairavatantra Corpus (from Rails database - Work 6)
 # =============================================================================
-
-# VBT verses in Devanagari (first 23 lines)
-VBT_CORPUS = [
-    "श्रुतं देव मया सर्वं रुद्रयामलसम्भवम् / त्रिकभेदम् अशेषेण सारात् सारविभागशः",  # VBT 1.1
-    "अद्यापि न निवृत्तो मे संशयः परमेश्वर / किंरूपं तत्त्वतो देव शब्दराशिकलामयम्",  # VBT 1.2
-    "किं वा नवात्मभेदेन भैरवे भैरवाकृतौ / त्रिशिरोभेदभिन्नं वा किं वा शक्तित्रयात्मकम्",  # VBT 1.3
-    "नादबिन्दुमयं वापि किं चन्द्रार्धनिरोधिकाः / चक्रारूढम् अनच्कं वा किं वा शक्तिस्वरूपकम्",  # VBT 1.4
-    "परापरायाः सकलम् अपरायाश् च वा पुनः / पराया यदि तद्वत् स्यात् परत्वं तद् विरुध्यते",  # VBT 1.5
-    "न हि वर्णविभेदेन देहभेदेन वा भवेत् / परत्वं निष्कलत्वेन सकलत्वे न तद् भवेत्",  # VBT 1.6
-    "प्रसादं कुरु मे नाथ निःशेषं छिन्द्धि संशयम्",  # VBT 1.6b
-    "साधु साधु त्वया पृष्टं तन्त्रसारम् इदम् प्रिये",  # VBT 1.7
-    "गूहनीयतमम् भद्रे तथापि कथयामि ते / यत्किंचित् सकलं रूपं भैरवस्य प्रकीर्तितम्",  # VBT 1.8
-    "तद् असारतया देवि विज्ञेयं शक्रजालवत् / मायास्वप्नोपमं चैव गन्धर्वनगरभ्रमम्",  # VBT 1.9
-    "ध्यानार्थम् भ्रान्तबुद्धीनां क्रियाडम्बरवर्तिनाम् / केवलं वर्णितम् पुंसां विकल्पनिहतात्मनाम्",  # VBT 1.10
-    "तत्त्वतो न नवात्मासौ शब्दराशिर् न भैरवः / न चासौ त्रिशिरा देवो न च शक्तित्रयात्मकम्",  # VBT 1.11
-    "नादबिन्दुमयो वापि न चन्द्रार्धनिरोधिकाः / न चक्रक्रमसम्भिन्नो न च शक्तिस्वरूपकः",  # VBT 1.12
-    "अप्रबुद्धमतीनां हि एता बलविभीषिकाः / मातृमोदकवत् सर्वं प्रवृत्त्यर्थं उदाहृतम्",  # VBT 1.13
-    "दिक्कालकलनोन्मुक्ता देशोद्देशाविशेषिनी / व्यपदेष्टुम् अशक्यासाव् अकथ्या परमार्थतः",  # VBT 1.14
-    "अन्तःस्वानुभवानन्दा विकल्पोन्मुक्तगोचरा / यावस्था भरिताकारा भैरवी भैरवात्मनः",  # VBT 1.15
-    "तद् वपुस् तत्त्वतो ज्ञेयं विमलं विश्वपूरणम् / एवंविधे परे तत्त्वे कः पूज्यः कश् च तृप्यति",  # VBT 1.16
-    "एवंविधा भैरवस्य यावस्था परिगीयते / सा परा पररूपेण परा देवी प्रकीर्तिता",  # VBT 1.17
-    "शक्तिशक्तिमतोर् यद्वद् अभेदः सर्वदा स्थितः / अतस् तद्धर्मधर्मित्वात् परा शक्तिः परात्मनः",  # VBT 1.18
-    "न वह्नेर् दाहिका शक्तिर् व्यतिरिक्ता विभाव्यते / केवलं ज्ञानसत्तायाम् प्रारम्भो ऽयम् प्रवेशने",  # VBT 1.19
-    "शक्त्यवस्थाप्रविष्टस्य निर्विभागेन भावना / तदासौ शिवरूपी स्यात् शैवी मुखम् इहोच्यते",  # VBT 1.20
-    "यथालोकेन दीपस्य किरणैर् भास्करस्य च / ज्ञायते दिग्विभागादि तद्वच् छक्त्या शिवः प्रिये",  # VBT 1.21
-]
-
-# English translations corresponding to VBT_CORPUS
-VBT_TRANSLATIONS = [
-    "O deva, I have heard the whole rudrayāmalasambhava, the trika divisions without remainder, the essence and non-essence by distinction.",
-    "Even now, I have no withdrawal due to my doubts. What true form oh deva, is śabdarāśi composed of atomicities?",
-    "Or what is bhairava's form in bhairavi through the nine-fold-division? Or what is the three-head-division difference? Or what is three natured śakti?",
-    "Or sound and bindu composed, or indeed, what is the half-moon and impeder? What is the cakra ascension, or the vowel-less? Or what is the śakti's self-form?",
-    "Or parāparā's and aparā's sakala? Or again, if from parā, with that parā, the parā-ness would be contradicted?",
-    "Or the form would not certainly be known by difference of caste or body. Nor by the sakala from its para-ness through niṣkala.",
-    "O Lord, bestow your grace upon me; completely dispel all my doubts.",
-    "Well done, well done! You have inquired, my dear, about the very essence of the scriptures.",
-    "O dear one, though it is most secret, I shall tell you; whatever little sakala forms, are bhairava's proclamation.",
-    "O Goddess, the vanity is to be know. Like indra's net, māyā, dream, and indeed, the illusion of the Gandharvas city.",
-    "Only for those of confused intellect, engrossed only in ostentatious rituals, for those minds attached to conceptualization, the meaning of meditation is described.",
-    "In truth, that is not navātma. Bhairava is not sound clusters. And the true form is not that three-headed god, nor the triad-śakti.",
-    "Or he is neither composed of sound or bindu. Nor the half moon, nirodhika; nor broken into chakra sequence. The self-form is not śakti.",
-    "For those whose minds are not awakened, these force and fear indeed are like a mother's sweet candies. All sacrificial affairs have been stated.",
-    "Unbound by the cognitive delimitation, marking, or reckoning of space and time. Undistinguished positioning. Impossible to define. Truly inexpressible.",
-    "Internal self direct experiential bliss, free from the conceptualization domain; that state full of bhairavī forms. This is the nature of bhairava.",
-    "That form must be truly known, pure and universe pervading. In suchlike, in the transcendental category, who is to be worshiped, and who pleases?",
-    "Suchlike, that bhairava's state is praised by all; She, through the parāpara form, or the para goddess form, is praised.",
-    "Just as the power and the possessor of power always abide as non-different, therefore, so is that quality and quality possessor. The supreme śakti is of supreme self.",
-    "The burning power of fire is not distinct from śakti; Only this knowledge of reality is the beginning at entering.",
-    "Having entered the śakti state, through no-difference creative contemplation; at that time, he would be in the form of śiva. Here śaivi's words are said.",
-    "Just as by the light of a lamp or by the rays of the sun, the directions and their divisions are perceived in the world, so too, O beloved, is Shiva known by his power.",
-]
-
-# Cross-lingual retrieval test cases: English translation → Sanskrit verse
-# Format: (English query, relevant_doc_indices in VBT_CORPUS)
-VBT_RETRIEVAL_TEST_CASES = [
-    # Thematic queries
-    ("doubt and uncertainty about true form", [1, 6]),  # VBT 1.2, 1.6b
-    ("śakti and power of bhairava", [2, 3, 18, 19]),  # VBT 1.3, 1.4, 1.18, 1.19
-    ("illusion māyā dream gandharva city", [9]),  # VBT 1.9
-    ("meditation for confused minds rituals", [10]),  # VBT 1.10
-    ("beyond time and space inexpressible", [14]),  # VBT 1.14
-    ("bliss free from conceptualization bhairavī", [15]),  # VBT 1.15
-    ("pure form universe pervading worship", [16]),  # VBT 1.16
-    ("śiva śakti non-different fire burning", [18, 19]),  # VBT 1.18, 1.19
-    ("light lamp sun rays shiva known", [21]),  # VBT 1.21
-    # Direct translation queries (paraphrased)
-    ("essence of tantric scriptures well done inquiry", [7]),  # VBT 1.7
-    ("secret teaching sakala forms bhairava", [8]),  # VBT 1.8
-]
-
-# VBT Similarity pairs: semantically related verses
-VBT_SIMILARITY_PAIRS = [
-    # Same theme: śakti nature (VBT 1.3 and 1.18)
-    (VBT_CORPUS[2], VBT_CORPUS[18]),
-    # Same theme: negation of forms (VBT 1.11 and 1.12)
-    (VBT_CORPUS[11], VBT_CORPUS[12]),
-    # Cross-lingual: Sanskrit verse and its translation
-    (VBT_CORPUS[15], VBT_TRANSLATIONS[15]),  # VBT 1.15
-    (VBT_CORPUS[21], VBT_TRANSLATIONS[21]),  # VBT 1.21
-]
-
-# VBT Dissimilarity pairs: unrelated verses
-VBT_DISSIMILARITY_PAIRS = [
-    # Devi's question vs Bhairava's answer about māyā
-    (VBT_CORPUS[1], VBT_CORPUS[9]),
-    # Grace request vs meditation for confused minds
-    (VBT_CORPUS[6], VBT_CORPUS[10]),
-    # Completely unrelated: cooking vs tantra
-    ("cooking recipe ingredients", VBT_CORPUS[15]),
-]
+from vbt_corpus import (
+    VBT_CORPUS,
+    VBT_TRANSLATIONS,
+    VBT_RETRIEVAL_TEST_CASES,
+    VBT_SIMILARITY_PAIRS,
+    VBT_DISSIMILARITY_PAIRS,
+)
 
 
 # =============================================================================
